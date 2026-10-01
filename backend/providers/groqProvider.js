@@ -1,5 +1,5 @@
 import Groq from "groq-sdk";
-import { AIProvider } from "./base.js";
+import { AIProvider, TITLE_SYSTEM_PROMPT, toOpenAIMessages } from "./base.js";
 
 export class GroqProvider extends AIProvider {
   constructor() {
@@ -17,7 +17,7 @@ export class GroqProvider extends AIProvider {
 
     const stream = await this.client.chat.completions.create({
       model,
-      messages: messages.map((m) => ({ role: m.role, content: m.content })),
+      messages: toOpenAIMessages(messages),
       stream: true,
       temperature: 0.7,
     });
@@ -38,7 +38,7 @@ export class GroqProvider extends AIProvider {
     const completion = await this.client.chat.completions.create({
       model: "openai/gpt-oss-20b",
       messages: [
-        { role: "system", content: "Tóm tắt câu hỏi sau thành một tiêu đề ngắn gọn bằng tiếng Việt, tối đa 6 từ, không dùng dấu ngoặc kép, không giải thích, chỉ trả về tiêu đề." },
+        { role: "system", content: TITLE_SYSTEM_PROMPT },
         { role: "user", content: text },
       ],
       temperature: 0.3,

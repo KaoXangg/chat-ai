@@ -19,7 +19,7 @@ import { conversationToMarkdown, downloadTextFile, safeFileName } from "../utils
 const SUGGESTIONS = [
   "Giải thích REST API là gì",
   "Viết hàm sắp xếp quicksort bằng JavaScript",
-  "Tối ưu truy vấn MongoDB chậm",
+  "Tối ưu truy vấn SQL Server chậm",
   "Hôm nay thời tiết ở Hồ Chí Minh thế nào?",
 ];
 

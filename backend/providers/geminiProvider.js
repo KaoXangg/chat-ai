@@ -1,5 +1,5 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
-import { AIProvider } from "./base.js";
+import { AIProvider, TITLE_SYSTEM_PROMPT } from "./base.js";
 
 function buildParts(message) {
   const parts = [];
@@ -9,7 +9,7 @@ function buildParts(message) {
       parts.push({ inlineData: { mimeType: img.mimeType, data: img.data } });
     }
   }
-  parts.push({ text: message.content || "Mô tả (những) hình ảnh này." });
+  parts.push({ text: message.content || "Describe the image(s)." });
   return parts;
 }
 
@@ -66,9 +66,7 @@ export class GeminiProvider extends AIProvider {
   async generateTitle(text) {
     if (!this.isConfigured()) throw new Error("Chưa cấu hình GEMINI_API_KEY.");
     const gModel = this.client.getGenerativeModel({ model: "gemini-2.5-flash" });
-    const result = await gModel.generateContent(
-      `Tóm tắt câu hỏi sau thành một tiêu đề ngắn gọn bằng tiếng Việt, tối đa 6 từ, không dùng dấu ngoặc kép, không giải thích, chỉ trả về tiêu đề duy nhất:\n\n${text}`
-    );
+    const result = await gModel.generateContent(`${TITLE_SYSTEM_PROMPT}\n\nMessage:\n${text}`);
     return result.response.text()?.trim().replace(/^["']|["']$/g, "") || null;
   }
 }

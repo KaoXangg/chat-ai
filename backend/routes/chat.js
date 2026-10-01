@@ -17,7 +17,12 @@ const MAX_HISTORY_MESSAGES = 20;
 const MAX_IMAGE_BASE64_LENGTH = 9_000_000;
 const MAX_IMAGES_PER_MESSAGE = 4;
 const MAX_MESSAGE_LENGTH = 32_000;
-const SYSTEM_PROMPT = "Bạn là Chat AI, một trợ lý AI thông minh. Hãy trả lời ngắn gọn, chính xác và hữu ích. Khi trả lời bằng tiếng Việt, luôn dùng đầy đủ dấu tiếng Việt. Khi viết mã, hãy dùng khối mã Markdown và ghi rõ ngôn ngữ. Khi viết công thức toán, dùng LaTeX: $...$ cho công thức trong dòng và $$...$$ cho công thức riêng một dòng.";
+const SYSTEM_PROMPT =
+  "You are Chat AI, a smart AI assistant. Answer concisely, accurately and helpfully. " +
+  "Always reply in the same language as the user's latest message, unless the user explicitly asks for another language. " +
+  "When replying in Vietnamese, always use full Vietnamese diacritics. " +
+  "When writing code, use Markdown code blocks and specify the language. " +
+  "For math, use LaTeX: $...$ for inline formulas and $$...$$ for display formulas.";
 
 const STREAM_ERROR_MESSAGES = {
   [AI_ERROR_CODES.RATE_LIMITED]: "Model miễn phí đang bị giới hạn tốc độ hoặc hết lượt tạm thời. Hãy đợi vài giây rồi thử lại, hoặc chọn model khác.",
@@ -189,8 +194,13 @@ router.post("/:conversationId/stream", chatLimiter, async (req, res, next) => {
     const imageList = normalizeImages(image, images);
 
     if (imageList.length) {
-      if (conversation.provider !== "gemini") {
-        return jsonError(res, 400, "IMAGE_NOT_SUPPORTED", "Chỉ mô hình Gemini hỗ trợ phân tích hình ảnh. Vui lòng chọn Gemini.");
+      // Quyết định theo capability "vision" của model đang chọn (admin cấu hình), không hard-code theo provider.
+      const selected = await AIModel.findOne({
+        where: { provider: conversation.provider, modelId: conversation.model, enabled: true },
+      });
+      const canSeeImages = selected ? selected.capabilities.includes("vision") : conversation.provider === "gemini";
+      if (!canSeeImages) {
+        return jsonError(res, 400, "IMAGE_NOT_SUPPORTED", "Mô hình đang chọn không hỗ trợ phân tích hình ảnh. Hãy chọn mô hình có nhãn Vision.");
       }
       for (const img of imageList) {
         if (!img?.data || !img?.mimeType || img.data.length > MAX_IMAGE_BASE64_LENGTH) {
@@ -210,6 +220,8 @@ router.post("/:conversationId/stream", chatLimiter, async (req, res, next) => {
 
     if (["Cuoc tro chuyen moi", "Cuộc trò chuyện mới"].includes(conversation.title)) {
       conversation.title = await generateConversationTitle(content.trim());
+      // Lưu ngay để tiêu đề không bị mất nếu lượt trả lời sau đó gặp lỗi.
+      await conversation.save();
     }
 
     const { webSources, webContext } = await getWebContext(useWebSearch, content.trim());

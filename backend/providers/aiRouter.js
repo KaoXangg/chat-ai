@@ -19,8 +19,9 @@ const LEGACY_MODELS = {
   openrouter: "openrouter/free",
 };
 
-// Provider thực sự gửi được ảnh (Groq/OpenRouter adapter chỉ nhận text).
-const IMAGE_PROVIDERS = new Set(["gemini"]);
+// Chỉ dùng cho catalog dự phòng (bảng AIModels trống). Khi có catalog thật, khả năng xử lý ảnh
+// được quyết định bởi capability "vision" của từng model (Gemini, Groq và OpenRouter adapter đều gửi được ảnh).
+const LEGACY_VISION_PROVIDERS = new Set(["gemini"]);
 
 // Provider vừa bị giới hạn tốc độ/hết quota sẽ được tạm bỏ qua để các request sau không phải chờ lỗi lại.
 const RATE_LIMIT_COOLDOWN_MS = 30_000;
@@ -56,7 +57,7 @@ function legacyCatalog() {
     modelId: LEGACY_MODELS[provider],
     priority: index,
     contextLength: 32768,
-    capabilities: IMAGE_PROVIDERS.has(provider) ? ["text", "vision"] : ["text"],
+    capabilities: LEGACY_VISION_PROVIDERS.has(provider) ? ["text", "vision"] : ["text"],
   }));
 }
 
@@ -68,6 +69,7 @@ const byPriority = (a, b) => (a.priority ?? 0) - (b.priority ?? 0);
  *  2. Các provider còn lại, sắp theo `priority` nhỏ nhất của model đang bật (admin chỉnh trong Admin → AI Model).
  * catalog = danh sách AIModel đang bật: { provider, modelId, priority, contextLength, capabilities }.
  * excludedModels = Set các khóa `${provider}/${modelId}` mà người dùng đã hết hạn mức token hôm nay.
+ * Khi needsVision = true, chỉ các model có capability "vision" được xét.
  */
 export function buildAttempts({ preferredProvider, preferredModel, catalog = [], needsVision = false, excludedModels = new Set() }) {
   const source = catalog.length ? catalog : legacyCatalog();
@@ -94,13 +96,15 @@ export function buildAttempts({ preferredProvider, preferredModel, catalog = [],
       skipped.push(`${name}: chưa cấu hình API key`);
       continue;
     }
-    if (needsVision && !IMAGE_PROVIDERS.has(name)) {
-      skipped.push(`${name}: không hỗ trợ phân tích ảnh`);
-      continue;
-    }
 
     let candidates = source.filter((m) => m.provider === name).sort(byPriority);
-    if (needsVision) candidates = candidates.filter((m) => m.capabilities?.includes("vision"));
+    if (needsVision) {
+      candidates = candidates.filter((m) => m.capabilities?.includes("vision"));
+      if (!candidates.length) {
+        skipped.push(`${name}: không có model hỗ trợ phân tích ảnh đang bật`);
+        continue;
+      }
+    }
     const allowed = candidates.filter((m) => !excludedModels.has(`${m.provider}/${m.modelId}`));
     if (candidates.length && !allowed.length) {
       quotaBlocked = true;
