@@ -37,10 +37,13 @@ export class OpenRouterProvider extends AIProvider {
       stream: true,
     });
 
+    let usage = null;
     for await (const chunk of stream) {
       const token = chunk.choices?.[0]?.delta?.content || "";
       if (token) yield token;
+      if (chunk.usage) usage = chunk.usage; // chunk cuối (choices có thể rỗng)
     }
+    if (usage) yield { usage: { promptTokens: usage.prompt_tokens, completionTokens: usage.completion_tokens } };
   }
 
   async generateTitle(text) {

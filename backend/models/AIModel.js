@@ -33,6 +33,8 @@ const AIModel = sequelize.define(
       },
     },
     contextLength: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 8192 },
+    // Hạn mức token mỗi người dùng được dùng với model này trong 1 ngày. 0 = không giới hạn.
+    dailyTokenLimit: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
     enabled: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
     isDefault: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
     priority: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 }, // uu tien fallback, so nho hon = uu tien hon

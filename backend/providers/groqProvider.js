@@ -22,10 +22,15 @@ export class GroqProvider extends AIProvider {
       temperature: 0.7,
     });
 
+    let usage = null;
     for await (const chunk of stream) {
       const token = chunk.choices?.[0]?.delta?.content || "";
       if (token) yield token;
+      // Groq trả số token ở chunk cuối (x_groq.usage).
+      const u = chunk.x_groq?.usage || chunk.usage;
+      if (u) usage = u;
     }
+    if (usage) yield { usage: { promptTokens: usage.prompt_tokens, completionTokens: usage.completion_tokens } };
   }
 
   async generateTitle(text) {

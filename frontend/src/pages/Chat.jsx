@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from "react";
-import { Menu, ArrowDown, Download } from "lucide-react";
+import { Menu, ArrowDown, Download, Gauge } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import clsx from "clsx";
 import api from "../api/axios.js";
@@ -9,6 +9,7 @@ import ChatInput from "../components/ChatInput.jsx";
 import ModelSelector from "../components/ModelSelector.jsx";
 import BrandMark from "../components/BrandMark.jsx";
 import Tooltip from "../components/Tooltip.jsx";
+import UsageModal, { usageTone, TEXT_TONE } from "../components/UsageModal.jsx";
 import { useChatStream } from "../hooks/useChatStream.js";
 import { useAuth } from "../context/AuthContext.jsx";
 import { useToast, apiErrorMessage } from "../context/ToastContext.jsx";
@@ -42,6 +43,10 @@ export default function Chat() {
   }); // desktop: sidebar thu gọn hẳn
   const [searchTerm, setSearchTerm] = useState("");
   const [messagesLoading, setMessagesLoading] = useState(false);
+  const [usage, setUsage] = useState(null); // mức sử dụng token hôm nay (GET /usage)
+  const [usageOpen, setUsageOpen] = useState(false);
+  const [usageLoading, setUsageLoading] = useState(false);
+  const [usageError, setUsageError] = useState(null);
   const scrollRef = useRef(null);
   const stickToBottomRef = useRef(true);
   const [showScrollBtn, setShowScrollBtn] = useState(false);
@@ -59,6 +64,8 @@ export default function Chat() {
     ? { provider: activeConversation.provider, model: activeConversation.model }
     : draftModel;
   const currentModel = models.find((m) => m.provider === currentSelection.provider && m.modelId === currentSelection.model);
+  const currentUsage = usage?.models?.find((m) => m.provider === currentSelection.provider && m.modelId === currentSelection.model);
+  const usageTonePill = usageTone(currentUsage?.percentRemaining);
   // Prefer the model's declared capability (admin-configurable); fall back to the historical
   // gemini-only behavior for models seeded before "vision" existed as a capability tag.
   const allowImage = Boolean(currentModel?.capabilities?.includes("vision") || currentSelection.provider === "gemini");
@@ -76,6 +83,23 @@ export default function Chat() {
     },
     [toast]
   );
+
+  const loadUsage = useCallback(async () => {
+    setUsageLoading(true);
+    try {
+      const res = await api.get("/usage");
+      setUsage(res.data.data);
+      setUsageError(null);
+    } catch (err) {
+      // Không chặn chat, nhưng cho người dùng biết lý do để dễ xử lý.
+      const status = err.response?.status;
+      if (status === 404) setUsageError("Backend chưa có API /usage. Hãy khởi động lại backend (npm run dev trong thư mục backend).");
+      else if (!err.response) setUsageError("Không kết nối được backend. Hãy kiểm tra backend đang chạy.");
+      else setUsageError(err.response?.data?.error?.message || `Không tải được mức sử dụng (lỗi ${status}).`);
+    } finally {
+      setUsageLoading(false);
+    }
+  }, []);
 
   const loadModels = useCallback(async () => {
     try {
@@ -104,6 +128,7 @@ export default function Chat() {
   useEffect(() => {
     loadModels();
     loadConversations();
+    loadUsage();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -248,8 +273,10 @@ export default function Chat() {
         })
       );
       loadConversations(searchTerm);
+      loadUsage();
     },
     onError: (message, code, { preStream, userMessageId } = {}) => {
+      if (code === "QUOTA_EXCEEDED" || !preStream) loadUsage();
       if (preStream && onPreStreamError) {
         onPreStreamError(message, code);
         return;
@@ -455,6 +482,22 @@ export default function Chat() {
             <Menu size={20} />
           </button>
           <ModelSelector models={models} value={currentSelection} onChange={handleModelChange} />
+          <div className="flex items-center gap-1">
+          <Tooltip label="Mức sử dụng token" align="end">
+            <button
+              onClick={() => {
+                setUsageOpen(true);
+                loadUsage();
+              }}
+              aria-label="Xem mức sử dụng token"
+              className="flex items-center gap-1.5 px-2 py-2 rounded-xl hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
+            >
+              <Gauge size={18} />
+              {currentUsage && !currentUsage.unlimited && (
+                <span className={`text-xs font-semibold ${TEXT_TONE[usageTonePill]}`}>{currentUsage.percentRemaining}%</span>
+              )}
+            </button>
+          </Tooltip>
           <Tooltip label="Xuất cuộc trò chuyện (.md)" align="end">
 <button
             onClick={handleExport}
@@ -465,6 +508,7 @@ export default function Chat() {
             <Download size={18} />
           </button>
 </Tooltip>
+          </div>
         </header>
 
         <div className="relative flex-1 min-h-0">
@@ -537,6 +581,15 @@ export default function Chat() {
         </div>
 
         <ChatInput onSend={handleSend} isStreaming={isStreaming} disabled={isSubmitting} onStop={stop} allowImage={allowImage} />
+        <UsageModal
+          open={usageOpen}
+          onClose={() => setUsageOpen(false)}
+          usage={usage}
+          loading={usageLoading}
+          error={usageError}
+          onRefresh={loadUsage}
+          current={currentSelection}
+        />
       </div>
     </div>
   );

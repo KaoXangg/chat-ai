@@ -11,6 +11,7 @@ import conversationRoutes from "./routes/conversations.js";
 import chatRoutes from "./routes/chat.js";
 import modelRoutes from "./routes/models.js";
 import adminRoutes from "./routes/admin.js";
+import usageRoutes from "./routes/usage.js";
 
 const app = express();
 
@@ -25,6 +26,7 @@ app.use("/api/conversations", conversationRoutes);
 app.use("/api/chat", chatRoutes);
 app.use("/api/models", modelRoutes);
 app.use("/api/admin", adminRoutes);
+app.use("/api/usage", usageRoutes);
 
 app.use(notFoundHandler);
 app.use(errorHandler);

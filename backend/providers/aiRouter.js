@@ -29,6 +29,7 @@ const cooldownUntil = {};
 export const AI_ERROR_CODES = {
   RATE_LIMITED: "RATE_LIMITED",
   PROVIDER_UNAVAILABLE: "PROVIDER_UNAVAILABLE",
+  QUOTA_EXCEEDED: "QUOTA_EXCEEDED",
 };
 
 /** Nhận diện lỗi giới hạn tốc độ / hết quota từ OpenAI SDK, Groq SDK và Google Generative AI. */
@@ -66,8 +67,9 @@ const byPriority = (a, b) => (a.priority ?? 0) - (b.priority ?? 0);
  *  1. Provider người dùng chọn (đúng model đã chọn nếu model còn bật, nếu không lấy model ưu tiên nhất của provider đó).
  *  2. Các provider còn lại, sắp theo `priority` nhỏ nhất của model đang bật (admin chỉnh trong Admin → AI Model).
  * catalog = danh sách AIModel đang bật: { provider, modelId, priority, contextLength, capabilities }.
+ * excludedModels = Set các khóa `${provider}/${modelId}` mà người dùng đã hết hạn mức token hôm nay.
  */
-export function buildAttempts({ preferredProvider, preferredModel, catalog = [], needsVision = false }) {
+export function buildAttempts({ preferredProvider, preferredModel, catalog = [], needsVision = false, excludedModels = new Set() }) {
   const source = catalog.length ? catalog : legacyCatalog();
   const bestPriority = (name) => {
     const list = source.filter((m) => m.provider === name);
@@ -81,6 +83,7 @@ export function buildAttempts({ preferredProvider, preferredModel, catalog = [],
 
   const attempts = [];
   const skipped = [];
+  let quotaBlocked = false;
 
   for (const name of order) {
     if (!providers[name]) {
@@ -98,25 +101,38 @@ export function buildAttempts({ preferredProvider, preferredModel, catalog = [],
 
     let candidates = source.filter((m) => m.provider === name).sort(byPriority);
     if (needsVision) candidates = candidates.filter((m) => m.capabilities?.includes("vision"));
-    if (!candidates.length) {
+    const allowed = candidates.filter((m) => !excludedModels.has(`${m.provider}/${m.modelId}`));
+    if (candidates.length && !allowed.length) {
+      quotaBlocked = true;
+      skipped.push(`${name}: đã hết hạn mức token hôm nay`);
+      continue;
+    }
+    if (!allowed.length) {
       skipped.push(`${name}: không có model phù hợp đang bật`);
       continue;
     }
+    candidates = allowed;
 
     const chosen = (name === preferredProvider && candidates.find((m) => m.modelId === preferredModel)) || candidates[0];
     attempts.push({ providerName: name, model: chosen.modelId, contextLength: chosen.contextLength });
   }
 
-  return { attempts, skipped };
+  return { attempts, skipped, quotaBlocked };
 }
 
-export async function* streamWithFallback(messages, preferredProvider = "groq", model, { catalog = [] } = {}) {
+/**
+ * Stream câu trả lời, tự động fallback. Mỗi phần tử trả về là một trong hai dạng:
+ *  - { token, provider, model }  : một đoạn văn bản
+ *  - { usage, provider, model }  : số token của lượt trả lời (phát đúng 1 lần ở cuối; `estimated: true` nếu tự ước lượng)
+ */
+export async function* streamWithFallback(messages, preferredProvider = "groq", model, { catalog = [], excludedModels = new Set() } = {}) {
   const lastMessage = messages[messages.length - 1];
   const needsVision = Boolean(lastMessage?.images?.length || lastMessage?.image);
 
-  const { attempts, skipped } = buildAttempts({ preferredProvider, preferredModel: model, catalog, needsVision });
+  const { attempts, skipped, quotaBlocked } = buildAttempts({ preferredProvider, preferredModel: model, catalog, needsVision, excludedModels });
   const errors = [...skipped];
   let rateLimited = false;
+  let ranAny = false;
 
   for (const attempt of attempts) {
     const { providerName, model: usedModel, contextLength } = attempt;
@@ -132,18 +148,40 @@ export async function* streamWithFallback(messages, preferredProvider = "groq", 
       console.log(`[AI Router] ${providerName}/${usedModel}: bỏ ${trimmed.dropped} tin cũ, còn ~${trimmed.estimatedTokens} token đầu vào.`);
     }
 
+    const estimateUsage = (chars) => ({
+      promptTokens: trimmed.estimatedTokens,
+      completionTokens: Math.ceil(chars / 3),
+      estimated: true,
+    });
+
     let hasYielded = false;
+    let streamedChars = 0;
+    let providerUsage = null;
+    ranAny = true;
     try {
-      for await (const token of providers[providerName].streamChat(trimmed.messages, usedModel)) {
+      for await (const chunk of providers[providerName].streamChat(trimmed.messages, usedModel)) {
+        if (typeof chunk !== "string") {
+          if (chunk?.usage) providerUsage = chunk.usage;
+          continue;
+        }
         hasYielded = true;
-        yield { token, provider: providerName, model: usedModel };
+        streamedChars += chunk.length;
+        yield { token: chunk, provider: providerName, model: usedModel };
       }
-      if (hasYielded) return;
+      if (hasYielded) {
+        yield { usage: providerUsage || estimateUsage(streamedChars), provider: providerName, model: usedModel };
+        return;
+      }
       errors.push(`${providerName}: không trả về dữ liệu`);
     } catch (err) {
       console.error(`[AI Router] Nhà cung cấp "${providerName}" gặp lỗi:`, err.message);
       // Đã gửi một phần câu trả lời cho client -> không chuyển provider khác (sẽ bị nối trùng nội dung).
-      if (hasYielded) throw err;
+      if (hasYielded) {
+        err.usage = estimateUsage(streamedChars);
+        err.provider = providerName;
+        err.model = usedModel;
+        throw err;
+      }
       if (isRateLimitError(err)) {
         rateLimited = true;
         cooldownUntil[providerName] = Date.now() + RATE_LIMIT_COOLDOWN_MS;
@@ -153,7 +191,8 @@ export async function* streamWithFallback(messages, preferredProvider = "groq", 
   }
 
   const error = new Error(`Tất cả nhà cung cấp AI đều gặp lỗi hoặc chưa được cấu hình. Chi tiết: ${errors.join(" | ")}`);
-  error.code = rateLimited ? AI_ERROR_CODES.RATE_LIMITED : AI_ERROR_CODES.PROVIDER_UNAVAILABLE;
+  if (!ranAny && !rateLimited && quotaBlocked) error.code = AI_ERROR_CODES.QUOTA_EXCEEDED;
+  else error.code = rateLimited ? AI_ERROR_CODES.RATE_LIMITED : AI_ERROR_CODES.PROVIDER_UNAVAILABLE;
   throw error;
 }
 

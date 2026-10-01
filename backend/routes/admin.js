@@ -146,6 +146,15 @@ router.delete("/users/:id", async (req, res, next) => {
 });
 
 // ---------- AI MODEL MANAGEMENT ----------
+/** Bản sao body và chuẩn hóa hạn mức token (số nguyên >= 0; 0 = không giới hạn). */
+function sanitizeModelPayload(body) {
+  const payload = { ...body };
+  if (payload.dailyTokenLimit !== undefined) {
+    payload.dailyTokenLimit = Math.max(0, Math.floor(Number(payload.dailyTokenLimit)) || 0);
+  }
+  return payload;
+}
+
 router.get("/models", async (req, res, next) => {
   try {
     const models = await AIModel.findAll({ order: [["provider", "ASC"], ["priority", "ASC"]] });
@@ -157,7 +166,7 @@ router.get("/models", async (req, res, next) => {
 
 router.post("/models", async (req, res, next) => {
   try {
-    const payload = { ...req.body };
+    const payload = sanitizeModelPayload(req.body);
     // Model mặc định phải đang bật.
     if (payload.isDefault === true) payload.enabled = true;
 
@@ -178,7 +187,7 @@ router.patch("/models/:id", async (req, res, next) => {
   try {
     const model = await AIModel.findByPk(req.params.id);
     if (!model) return res.status(404).json({ success: false, error: { code: "NOT_FOUND", message: "Không tìm thấy mô hình." } });
-    const payload = { ...req.body };
+    const payload = sanitizeModelPayload(req.body);
     if (payload.isDefault === true) payload.enabled = true; // model mặc định phải đang bật
     if (payload.enabled === false) payload.isDefault = false; // model bị tắt không thể là mặc định
 

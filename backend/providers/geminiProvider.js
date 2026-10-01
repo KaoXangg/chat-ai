@@ -50,6 +50,17 @@ export class GeminiProvider extends AIProvider {
       const token = chunk.text();
       if (token) yield token;
     }
+
+    // Số token thật: totalTokenCount đã gồm cả token "suy nghĩ" của Gemini 2.5.
+    try {
+      const meta = (await result.response).usageMetadata;
+      if (meta) {
+        const promptTokens = meta.promptTokenCount || 0;
+        yield { usage: { promptTokens, completionTokens: Math.max(0, (meta.totalTokenCount || 0) - promptTokens) } };
+      }
+    } catch {
+      /* không lấy được usage -> router sẽ tự ước lượng */
+    }
   }
 
   async generateTitle(text) {

@@ -4,6 +4,7 @@ import { sequelize } from "../config/db.js";
 import Conversation from "../models/Conversation.js";
 import Message from "../models/Message.js";
 import AIModel from "../models/AIModel.js";
+import { getExhaustedModels, recordUsage, getTzLabel } from "../utils/quota.js";
 import { authMiddleware } from "../middleware/auth.js";
 import { chatLimiter } from "../middleware/rateLimit.js";
 import { streamWithFallback, generateConversationTitle, AI_ERROR_CODES } from "../providers/aiRouter.js";
@@ -20,6 +21,7 @@ const SYSTEM_PROMPT = "Bạn là Chat AI, một trợ lý AI thông minh. Hãy t
 
 const STREAM_ERROR_MESSAGES = {
   [AI_ERROR_CODES.RATE_LIMITED]: "Model miễn phí đang bị giới hạn tốc độ hoặc hết lượt tạm thời. Hãy đợi vài giây rồi thử lại, hoặc chọn model khác.",
+  [AI_ERROR_CODES.QUOTA_EXCEEDED]: "Bạn đã dùng hết hạn mức token hôm nay của các mô hình khả dụng.",
   [AI_ERROR_CODES.PROVIDER_UNAVAILABLE]: "Không thể kết nối với AI lúc này. Vui lòng thử lại.",
 };
 
@@ -100,15 +102,22 @@ async function runStream(req, res, conversation, messagesForAI, { webSources = [
   let fullResponse = "";
   let usedProvider = conversation.provider;
   let usedModel = conversation.model;
+  let usage = null;
   const userId = userMessageId !== null && userMessageId !== undefined ? String(userMessageId) : undefined;
 
   try {
     const catalog = await loadModelCatalog();
-    for await (const { token, provider, model } of streamWithFallback(messagesForAI, conversation.provider, conversation.model, { catalog })) {
-      fullResponse += token;
-      usedProvider = provider;
-      usedModel = model;
-      sseSend(res, { token });
+    // Model mà người dùng đã dùng hết hạn mức token hôm nay sẽ bị router bỏ qua.
+    const excludedModels = await getExhaustedModels(req.user.id, catalog);
+    for await (const item of streamWithFallback(messagesForAI, conversation.provider, conversation.model, { catalog, excludedModels })) {
+      usedProvider = item.provider;
+      usedModel = item.model;
+      if (item.usage) {
+        usage = item.usage;
+        continue;
+      }
+      fullResponse += item.token;
+      sseSend(res, { token: item.token });
     }
 
     const assistantMessage = await Message.create({
@@ -121,6 +130,7 @@ async function runStream(req, res, conversation, messagesForAI, { webSources = [
     });
 
     await conversation.save();
+    await recordUsage({ userId: req.user.id, provider: usedProvider, modelId: usedModel, usage });
 
     sseSend(res, {
       done: true,
@@ -132,6 +142,10 @@ async function runStream(req, res, conversation, messagesForAI, { webSources = [
     });
   } catch (err) {
     console.error("[Chat Stream] Lỗi:", err.message);
+    // Câu trả lời dở dang vẫn đã tiêu tốn token -> ghi nhận bản ước lượng.
+    if (err.usage) {
+      await recordUsage({ userId: req.user.id, provider: err.provider || usedProvider, modelId: err.model || usedModel, usage: err.usage });
+    }
     if (fullResponse) {
       try {
         await Message.create({
@@ -147,7 +161,11 @@ async function runStream(req, res, conversation, messagesForAI, { webSources = [
       }
     }
     const code = STREAM_ERROR_MESSAGES[err.code] ? err.code : AI_ERROR_CODES.PROVIDER_UNAVAILABLE;
-    sseSend(res, { error: STREAM_ERROR_MESSAGES[code], code, userMessageId: userId });
+    const message =
+      code === AI_ERROR_CODES.QUOTA_EXCEEDED
+        ? `${STREAM_ERROR_MESSAGES[code]} Hạn mức làm mới lúc 00:00 (${getTzLabel()}); bạn cũng có thể chọn mô hình khác.`
+        : STREAM_ERROR_MESSAGES[code];
+    sseSend(res, { error: message, code, userMessageId: userId });
   } finally {
     res.end();
   }

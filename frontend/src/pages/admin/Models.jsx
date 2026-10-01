@@ -22,6 +22,7 @@ const EMPTY_FORM = {
   description: "",
   priority: 0,
   contextLength: 8192,
+  dailyTokenLimit: 0,
   capabilities: ["text"],
 };
 
@@ -42,6 +43,7 @@ function ModelFormModal({ open, onClose, onSaved, editingModel }) {
         description: editingModel.description || "",
         priority: editingModel.priority ?? 0,
         contextLength: editingModel.contextLength ?? 8192,
+        dailyTokenLimit: editingModel.dailyTokenLimit ?? 0,
         capabilities: editingModel.capabilities?.length ? editingModel.capabilities : ["text"],
       });
     } else {
@@ -68,6 +70,7 @@ function ModelFormModal({ open, onClose, onSaved, editingModel }) {
       ...form,
       priority: Number(form.priority) || 0,
       contextLength: Number(form.contextLength) || 8192,
+      dailyTokenLimit: Math.max(0, Math.floor(Number(form.dailyTokenLimit)) || 0),
     };
     try {
       if (isEditing) {
@@ -207,6 +210,16 @@ function ModelFormModal({ open, onClose, onSaved, editingModel }) {
                     className="w-full px-3 py-2 rounded-xl border border-edge-light dark:border-edge-dark bg-white/50 dark:bg-white/5 text-sm outline-none focus:border-brand-400"
                   />
                 </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium opacity-60 mb-1 block">Hạn mức token / người dùng / ngày (0 = không giới hạn)</label>
+                <input
+                  type="number"
+                  min={0}
+                  value={form.dailyTokenLimit}
+                  onChange={(e) => setForm((f) => ({ ...f, dailyTokenLimit: e.target.value }))}
+                  className="w-full px-3 py-2 rounded-xl border border-edge-light dark:border-edge-dark bg-white/50 dark:bg-white/5 text-sm outline-none focus:border-brand-400"
+                />
               </div>
               <p className="text-[11px] opacity-40 -mt-1">
                 Độ dài ngữ cảnh: giới hạn token thật của model; hệ thống tự bỏ bớt tin nhắn cũ để không vượt 70% giá trị này.
