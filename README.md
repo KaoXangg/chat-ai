@@ -1,294 +1,339 @@
-# Chat AI — Website Chat AI (Đồ án tốt nghiệp)
-
-Web chat AI hoàn chỉnh, kiến trúc giống ChatGPT: đăng ký/đăng nhập, nhiều
-cuộc trò chuyện, streaming trả lời real-time, chọn giữa nhiều AI model
-**miễn phí**, Admin Dashboard quản lý user + model. Toàn bộ code đã được
-build-test thành công (backend chạy được, frontend build không lỗi).
-
-## Mục lục
-
-1. [Kiến trúc & tính năng](#1-kiến-trúc--tính-năng)
-2. [Yêu cầu môi trường](#2-yêu-cầu-môi-trường)
-3. [Bước 1 — Tạo Database SQL Server](#bước-1--tạo-database-sql-server)
-4. [Bước 2 — Lấy API key AI free](#bước-2--lấy-api-key-ai-free)
-5. [Bước 3 — Cài & chạy Backend](#bước-3--cài--chạy-backend)
-6. [Bước 4 — Cài & chạy Frontend](#bước-4--cài--chạy-frontend)
-7. [Bước 5 — Đăng nhập Admin & quản trị](#bước-5--đăng-nhập-admin--quản-trị)
-8. [Deploy free (đưa web lên internet)](#6-deploy-free-đưa-web-lên-internet)
-9. [Cấu trúc project](#7-cấu-trúc-project)
-10. [Xử lý lỗi thường gặp](#8-xử-lý-lỗi-thường-gặp)
-11. [Hướng phát triển thêm](#9-hướng-phát-triển-thêm-cho-báo-cáo)
-
----
-
-## 1. Kiến trúc & tính năng
-
-**Stack:** React (Vite) + TailwindCSS · Node.js/Express · SQL Server (Sequelize) · JWT
-
-**Đã cài đặt đầy đủ (chạy được ngay):**
-- Đăng ký / đăng nhập (JWT), đổi mật khẩu
-- Nhiều cuộc trò chuyện / user, sidebar lịch sử, tìm kiếm, ghim, đổi tên, xoá
-- Chat streaming (SSE) — chữ hiện dần như ChatGPT
-- **Multi-AI provider**: Groq, Google Gemini, OpenRouter — tự động fallback nếu 1 con bị lỗi/hết quota
-- Dropdown chọn model ngay trong khung chat
-- Markdown + code block có syntax highlighting
-- Copy / Regenerate / Like–Dislike câu trả lời
-- Dark/Light mode
-- Rate-limit chống spam (bảo vệ quota AI free)
-- **Admin Dashboard**: thống kê tổng quan (biểu đồ), quản lý user (ban/unban/đổi quyền/xoá), quản lý AI model (bật/tắt, đặt mặc định)
-
-**Kiến trúc AI provider (adapter pattern):**
-
+::: {align="center"}
+✨ Chat AI
+Trợ lý AI đa mô hình --- giao diện hiện đại, phản hồi trực tuyến
+Một ứng dụng web trò chuyện với AI lấy cảm hứng từ trải nghiệm ChatGPT,
+xây dựng bằng React, Node.js/Express và Microsoft SQL Server.
+```{=html}
+<p>
 ```
-backend/providers/
-  base.js              <- interface chung
-  groqProvider.js
-  geminiProvider.js
-  openrouterProvider.js
-  aiRouter.js          <- fallback chain: Groq lỗi → thử Gemini → thử OpenRouter
+`<img src="https://img.shields.io/badge/React-18-61DAFB?style=for-the-badge&logo=react&logoColor=white" alt="React" />`{=html}
+`<img src="https://img.shields.io/badge/Vite-5-646CFF?style=for-the-badge&logo=vite&logoColor=white" alt="Vite" />`{=html}
+`<img src="https://img.shields.io/badge/Node.js-18%2B-339933?style=for-the-badge&logo=nodedotjs&logoColor=white" alt="Node.js" />`{=html}
+`<img src="https://img.shields.io/badge/Express-4-000000?style=for-the-badge&logo=express&logoColor=white" alt="Express" />`{=html}
+`<img src="https://img.shields.io/badge/SQL%20Server-Database-CC2927?style=for-the-badge&logo=microsoftsqlserver&logoColor=white" alt="SQL Server" />`{=html}
+```{=html}
+</p>
 ```
-
-Muốn thêm provider mới (ví dụ Mistral, Cerebras): tạo file
-`mistralProvider.js` theo đúng interface của `base.js`, đăng ký vào
-`aiRouter.js`. Không cần sửa gì ở route hay frontend.
-
+Chat • Quản lý hội thoại • Nhiều nhà cung cấp AI • Admin Dashboard
+:::
 ---
-
-## 2. Yêu cầu môi trường
-
-Cài trước trên máy:
-
-| Phần mềm | Phiên bản | Kiểm tra bằng |
-|---|---|---|
-| Node.js | ≥ 18 | `node -v` |
-| npm | đi kèm Node | `npm -v` |
-| SQL Server | 2019+ (hoặc Azure SQL) | `sqlcmd -?` hoặc mở bằng SSMS |
-| Git (tuỳ chọn) | bất kỳ | `git --version` |
-
-Tải Node.js tại: https://nodejs.org (chọn bản LTS)
-Tải SQL Server Developer (free) tại: https://www.microsoft.com/sql-server/sql-server-downloads
-Công cụ quản trị đề xuất: **SSMS** (Windows) hoặc **Azure Data Studio** (đa nền tảng).
-
+📌 Giới thiệu
+Chat AI là dự án web full-stack cho phép người dùng tạo tài khoản,
+trò chuyện với các mô hình AI, quản lý lịch sử hội thoại và tùy chỉnh
+trải nghiệm sử dụng. Dự án có trang quản trị riêng để theo dõi hoạt
+động, quản lý tài khoản và cấu hình danh sách mô hình AI.
+> Đây là dự án phục vụ học tập và phát triển. Các tính năng thực tế khi
+> chạy phụ thuộc vào cấu hình database, API key và môi trường triển
+> khai.
+✨ Tính năng chính
+```{=html}
+<table>
+```
+```{=html}
+<tr>
+```
+```{=html}
+<td width="50%" valign="top">
+```
+💬 Trò chuyện AI
+Phản hồi dạng streaming, hiển thị nội dung theo thời gian thực.
+Quản lý nhiều cuộc trò chuyện.
+Tìm kiếm, ghim, đổi tên và xóa hội thoại.
+Hiển thị Markdown, công thức và khối mã.
+Sao chép và tạo lại câu trả lời.
+Thao tác đánh giá phản hồi.
+```{=html}
+</td>
+```
+```{=html}
+<td width="50%" valign="top">
+```
+🧠 Nhiều AI provider
+Tích hợp Groq.
+Tích hợp Google Gemini.
+Tích hợp OpenRouter.
+Bộ định tuyến provider và cơ chế fallback.
+Chọn model ngay trong giao diện chat.
+Cấu hình API key ở phía backend.
+```{=html}
+</td>
+```
+```{=html}
+</tr>
+```
+```{=html}
+<tr>
+```
+```{=html}
+<td width="50%" valign="top">
+```
+🔐 Tài khoản & bảo mật
+Đăng ký và đăng nhập.
+Xác thực bằng JWT.
+Chức năng quên/đặt lại mật khẩu qua email theo cấu hình.
+Phân quyền người dùng và quản trị viên.
+Giới hạn tần suất yêu cầu chat.
+Middleware xử lý xác thực và lỗi.
+```{=html}
+</td>
+```
+```{=html}
+<td width="50%" valign="top">
+```
+🛠️ Admin Dashboard
+Tổng quan thống kê và biểu đồ.
+Quản lý người dùng.
+Khóa/mở khóa tài khoản và quản lý quyền.
+Quản lý danh sách AI model.
+Bật/tắt model và chọn model mặc định.
+Theo dõi trạng thái cấu hình provider.
+```{=html}
+</td>
+```
+```{=html}
+</tr>
+```
+```{=html}
+</table>
+```
+🧰 Công nghệ sử dụng
 ---
-
-## Bước 1 — Tạo Database SQL Server
-
-1. Cài SQL Server (local) hoặc tạo **Azure SQL Database** free tier.
-2. Mở SSMS/Azure Data Studio, kết nối tới server, tạo database rỗng tên `chat_ai`:
-   ```sql
-   CREATE DATABASE chat_ai;
-   ```
-3. Chạy file **`backend/sql/schema.sql`** trên database `chat_ai` vừa tạo —
-   file này tạo sẵn đầy đủ 4 bảng `Users, Conversations, Messages, AIModels`
-   kèm khoá ngoại, index, default value khớp với code backend.
-4. Ghi lại thông tin kết nối (host, port, username, password) — sẽ dán vào
-   `backend/.env` ở Bước 3.
-
-> Không có SQL Server cài sẵn? Cách nhanh nhất là chạy bằng Docker:
-> ```bash
-> docker run -e "ACCEPT_EULA=Y" -e "MSSQL_SA_PASSWORD=YourStrong@Passw0rd" \
->   -p 1433:1433 --name sqlserver -d mcr.microsoft.com/mssql/server:2022-latest
-> ```
-> Sau đó dùng `DB_HOST=localhost`, `DB_USER=sa`, `DB_PASSWORD=YourStrong@Passw0rd`.
-
+Khu vực                             Công nghệ
 ---
-
-## Bước 2 — Lấy API key AI (free)
-
-Chỉ cần **1 con là chạy được**, nhưng nên lấy đủ 3 con để có fallback khi demo (nếu 1 con bị rate-limit giữa lúc bảo vệ đồ án, hệ thống tự chuyển sang con khác).
-
-### 🟢 Groq (khuyến nghị làm chính — free, tốc độ nhanh nhất)
-1. Vào https://console.groq.com → đăng nhập bằng Google/GitHub
-2. Vào **API Keys** (menu trái) → **Create API Key**
-3. Copy key (dạng `gsk_...`) → dán vào `GROQ_API_KEY`
-
-### 🔵 Google Gemini (free tier ổn định)
-1. Vào https://aistudio.google.com/app/apikey
-2. Đăng nhập Google → **Create API Key**
-3. Copy key → dán vào `GEMINI_API_KEY`
-
-### 🟣 OpenRouter (nhiều model `:free`, dùng làm backup)
-1. Vào https://openrouter.ai/keys → đăng nhập
-2. **Create Key** → copy key (dạng `sk-or-...`)
-3. Dán vào `OPENROUTER_API_KEY`
-
-> **Không cần** OpenAI/Anthropic/xAI — các provider này không có free tier
-> thật, đã bỏ ra khỏi hệ thống để đúng yêu cầu "free tất cả key".
-
----
-
-## Bước 3 — Cài & chạy Backend
-
-```bash
+Frontend                            React 18, Vite 5, React Router
+Giao diện                           Tailwind CSS, Framer Motion, Lucide
+React
+Biểu đồ                             Recharts
+Nội dung chat                       React Markdown, remark-gfm,
+remark-math, KaTeX, syntax
+highlighting
+HTTP client                         Axios
+Backend                             Node.js, Express
+Cơ sở dữ liệu                       Microsoft SQL Server
+ORM                                 Sequelize, Tedious
+Xác thực                            JSON Web Token (JWT), bcryptjs
+AI providers                        Groq, Google Gemini, OpenRouter
+Email                               Nodemailer
+🗂️ Cấu trúc dự án
+``` text
+chat-ai/
+├── backend/
+│   ├── config/             # Cấu hình kết nối database
+│   ├── middleware/         # Auth, admin, rate limit, error handler
+│   ├── models/             # User, Conversation, Message, AIModel...
+│   ├── providers/          # Tích hợp và định tuyến AI providers
+│   ├── routes/             # API auth, chat, conversations, admin, models
+│   ├── sql/
+│   │   └── schema.sql      # Cấu trúc database
+│   ├── utils/              # Tiện ích token, email, avatar...
+│   ├── .env.example        # Mẫu biến môi trường
+│   ├── package.json
+│   ├── seed.js             # Khởi tạo dữ liệu ban đầu
+│   └── server.js
+├── frontend/
+│   ├── src/
+│   │   ├── api/            # Cấu hình gọi API
+│   │   ├── components/     # Thành phần giao diện
+│   │   ├── context/        # Auth, theme, toast, confirm
+│   │   ├── hooks/          # Hooks xử lý chat
+│   │   ├── pages/          # Trang người dùng và quản trị
+│   │   └── utils/
+│   ├── .env.example
+│   ├── package.json
+│   └── vite.config.js
+└── README.md
+```
+⚙️ Yêu cầu môi trường
+Trước khi cài đặt, hãy chuẩn bị:
+Node.js 18 trở lên và npm.
+Microsoft SQL Server (cục bộ hoặc máy chủ tương thích).
+Git để tải mã nguồn.
+API key của ít nhất một nhà cung cấp AI được cấu hình.
+Trình duyệt hiện đại.
+🚀 Cài đặt và chạy dự án
+1. Tải mã nguồn
+``` bash
+git clone https://github.com/KaoXangg/chat-ai.git
+cd chat-ai
+```
+Nếu repository của bạn có URL khác, hãy thay URL trong lệnh `git clone`
+bằng URL thật.
+2. Tạo database
+Mở SQL Server Management Studio (SSMS), kết nối SQL Server rồi chạy:
+``` sql
+CREATE DATABASE chat_ai;
+```
+Chọn database `chat_ai` và thực thi file:
+``` text
+backend/sql/schema.sql
+```
+File schema là bước khởi tạo cấu trúc dữ liệu. Nếu dự án có migration bổ
+sung, hãy kiểm tra và chạy theo hướng dẫn tương ứng trước khi khởi động
+backend.
+3. Cấu hình backend
+Mở terminal tại thư mục dự án:
+``` bash
 cd backend
 npm install
-cp .env.example .env
 ```
-
-Mở file `backend/.env` bằng VS Code, **dán các giá trị vào đúng chỗ**:
-
-```ini
+Tạo file `backend/.env` từ mẫu `backend/.env.example`. Trên PowerShell:
+``` powershell
+Copy-Item .env.example .env
+```
+Mở `backend/.env` và điền thông tin phù hợp với máy của bạn:
+``` ini
 PORT=5000
 NODE_ENV=development
 CLIENT_URL=http://localhost:5173
 
-# Thông tin kết nối SQL Server từ Bước 1
 DB_HOST=localhost
 DB_PORT=1433
 DB_NAME=chat_ai
-DB_USER=sa
-DB_PASSWORD=doi-mat-khau-nay
+DB_USER=your_sql_username
+DB_PASSWORD=your_sql_password
 DB_ENCRYPT=false
 DB_TRUST_SERVER_CERT=true
 
-# Đổi thành chuỗi bí mật bất kỳ; chuỗi càng dài càng an toàn.
-JWT_SECRET=chat-ai-secret-key-doi-thanh-chuoi-rieng-cua-ban-2026
+JWT_SECRET=replace_with_a_long_random_secret
 JWT_EXPIRES_IN=7d
 
-# Tài khoản quản trị mặc định — được tạo khi chạy lệnh seed.
 ADMIN_USERNAME=admin
-ADMIN_EMAIL=admin@chatai.local
-ADMIN_PASSWORD=Admin@123456
+ADMIN_EMAIL=admin@example.com
+ADMIN_PASSWORD=replace_with_a_strong_password
 
-# ===== DÁN API KEY VÀO ĐÂY =====
-GROQ_API_KEY=gsk_dan_key_groq_vao_day
-GEMINI_API_KEY=dan_key_gemini_vao_day
-OPENROUTER_API_KEY=sk-or-dan_key_openrouter_vao_day
+GROQ_API_KEY=
+GEMINI_API_KEY=
+OPENROUTER_API_KEY=
+TAVILY_API_KEY=
 
 CHAT_RATE_LIMIT_PER_MINUTE=10
 ```
-
-**Đây chính là nơi duy nhất bạn cần dán API key** — key luôn ở backend
-`.env`, không bao giờ lộ ra frontend hay trình duyệt, đúng chuẩn security.
-
-Đảm bảo đã chạy `backend/sql/schema.sql` trên database `chat_ai` (Bước 1)
-trước khi tiếp tục. Sau đó chạy 2 lệnh sau (chỉ cần chạy `seed` 1 lần đầu):
-
-```bash
-npm run seed   # tạo admin mặc định + seed danh sách AI model vào DB
-npm run dev    # khởi động backend tại http://localhost:5000
-```
-
-Thấy dòng `[Server] Chat AI backend đang chạy tại http://localhost:5000`
-là backend đã chạy thành công. Kiểm tra nhanh bằng cách mở
-`http://localhost:5000/api/health` trên trình duyệt → thấy `{"success":true...}`.
-
----
-
-## Bước 4 — Cài & chạy Frontend
-
-Mở **terminal mới** (giữ terminal backend đang chạy):
-
-```bash
-cd frontend
-npm install
-cp .env.example .env
+Lưu ý: Đây là cấu hình mẫu. Hãy đối chiếu với `backend/.env.example`
+của phiên bản đang sử dụng và không đưa thông tin bí mật thật vào README
+hoặc Git.
+4. Khởi tạo dữ liệu và chạy backend
+Trong terminal ở thư mục `backend`:
+``` bash
+npm run seed
 npm run dev
 ```
-
-Mở trình duyệt tại **http://localhost:5173** → thấy trang đăng nhập Chat AI.
-
-Đăng ký 1 tài khoản user thường để test chat, hoặc đăng nhập thẳng bằng
-tài khoản admin ở Bước 5.
-
----
-
-## Bước 5 — Đăng nhập Admin & quản trị
-
-Đăng nhập bằng thông tin trong `backend/.env`:
-- Email: `admin@chatai.local` (hoặc giá trị bạn đặt ở `ADMIN_EMAIL`)
-- Mật khẩu: `Admin@123456` (hoặc giá trị ở `ADMIN_PASSWORD`)
-
-Sau khi đăng nhập, ở sidebar trái (góc dưới) sẽ thấy nút **"Admin Dashboard"**
-(chỉ hiện với tài khoản có role `admin`). Bấm vào để vào `/admin`.
-
-**Trong Admin Dashboard:**
-
-| Trang | Chức năng |
-|---|---|
-| **Tổng quan** | Số user, số cuộc trò chuyện, tổng tin nhắn, biểu đồ tin nhắn/ngày, trạng thái từng AI provider (đã cấu hình key hay chưa) |
-| **Người dùng** | Tìm kiếm, xem danh sách, **khoá/mở khoá** (ban), **đổi quyền admin**, **xoá tài khoản** |
-| **AI Model** | Bật/tắt từng model cho user chọn, đặt model mặc định, xem provider nào đã có API key |
-
-**Muốn thêm model mới** (ví dụ thêm model Groq khác): gọi API
-`POST /api/admin/models` (dùng Postman, hoặc thêm form trong Admin UI nếu
-bạn phát triển thêm) với body:
-```json
-{ "provider": "groq", "modelId": "llama3-groq-70b-8192-tool-use-preview", "displayName": "Llama3 Groq Tool Use", "priority": 5 }
+Lệnh `npm run seed` dùng để khởi tạo dữ liệu ban đầu theo logic của dự
+án; thông thường chỉ chạy khi thiết lập lần đầu hoặc khi bạn chủ động
+cần seed lại.
+Backend mặc định sử dụng:
+``` text
+http://localhost:5000
 ```
-
----
-
-## 6. Deploy free (đưa web lên internet)
-
-Khi đã chạy ổn ở local, deploy để demo online (không cần máy tính lúc bảo vệ):
-
-| Phần | Nền tảng free | Ghi chú |
-|---|---|---|
-| Database | [Azure SQL Database](https://azure.microsoft.com/free) (free tier) hoặc SQL Server trên VPS | Chạy `backend/sql/schema.sql` trên instance sau khi tạo |
-| Backend | [Render](https://render.com) (Web Service, free tier) hoặc [Railway](https://railway.app) | Build command: `npm install`, Start command: `npm start`. Dán toàn bộ biến trong `.env` vào phần **Environment Variables** trên Render/Railway |
-| Frontend | [Vercel](https://vercel.com) hoặc [Netlify](https://netlify.com) | Root Directory: `frontend`, Build command: `npm run build`, Output: `dist`. Thêm biến `VITE_API_URL` = URL backend đã deploy (ví dụ `https://chat-ai-backend.onrender.com/api`) |
-
-**Lưu ý khi deploy:**
-- Sau khi deploy backend, cập nhật `CLIENT_URL` trong Environment Variables của backend = URL frontend thật (để CORS hoạt động)
-- Free tier của Render có "cold start" (ngủ sau 15 phút không dùng, lần gọi đầu chậm ~30s) — hãy "đánh thức" server trước khi demo vài phút
-- Đặt `DB_ENCRYPT=true` khi dùng Azure SQL (bắt buộc)
-- Chạy `npm run seed` ít nhất 1 lần trên môi trường production (Render có mục **Shell** để chạy lệnh này) để tạo admin + seed model
-
----
-
-## 7. Cấu trúc project
-
+Có thể kiểm tra endpoint health nếu server đã khởi động thành công:
+``` text
+http://localhost:5000/api/health
 ```
-chat-ai/
-├── backend/
-│   ├── config/db.js              # Ket noi SQL Server (Sequelize)
-│   ├── sql/schema.sql             # Script tao schema thu cong (Buoc 1)
-│   ├── models/                   # User, Conversation, Message, AIModel (Sequelize)
-│   ├── middleware/                # auth (JWT), admin (phân quyền), rateLimit, errorHandler
-│   ├── providers/                 # Adapter pattern cho từng AI (Groq/Gemini/OpenRouter) + fallback router
-│   ├── routes/                    # auth, conversations, chat (streaming), models, admin
-│   ├── seed.js                    # Tạo admin + seed model mặc định
-│   ├── server.js                  # Entry point
-│   └── .env.example
-└── frontend/
-    ├── src/
-    │   ├── api/axios.js            # HTTP client, tự gắn JWT token
-    │   ├── context/                # AuthContext, ThemeContext
-    │   ├── hooks/useChatStream.js  # Xử lý nhận SSE streaming
-    │   ├── components/             # Sidebar, ChatInput, MessageBubble, ModelSelector...
-    │   └── pages/                  # Login, Register, Chat, admin/*
-    └── .env.example
+5. Cấu hình và chạy frontend
+Mở terminal thứ hai, tại thư mục gốc dự án:
+``` bash
+cd frontend
+npm install
 ```
-
+Tạo file môi trường từ mẫu:
+``` powershell
+Copy-Item .env.example .env
+```
+Kiểm tra giá trị API base URL trong file môi trường frontend theo nội
+dung của `frontend/.env.example` và cấu hình backend đang chạy. Sau đó
+khởi động:
+``` bash
+npm run dev
+```
+Mở địa chỉ Vite được hiển thị trong terminal --- mặc định thường là:
+``` text
+http://localhost:5173
+```
+🔑 Cấu hình AI provider
+Bạn chỉ cần cấu hình API key của ít nhất một provider được hỗ trợ.
 ---
-
-## 8. Xử lý lỗi thường gặp
-
-| Lỗi | Nguyên nhân | Cách sửa |
-|---|---|---|
-| `[DB] Lỗi kết nối SQL Server` | Sai `DB_HOST/DB_USER/DB_PASSWORD`, SQL Server chưa bật TCP/IP, hoặc tường lửa chặn cổng 1433 | Kiểm tra lại `.env`; bật TCP/IP trong SQL Server Configuration Manager; mở cổng 1433 |
-| Chat báo tất cả nhà cung cấp AI đều gặp lỗi | Chưa thêm API key, hoặc key sai/hết hạn mức | Kiểm tra lại `.env`, thử tạo key mới, xem log terminal backend để biết nhà cung cấp nào gặp lỗi |
-| Frontend gọi API bị lỗi CORS | `CLIENT_URL` trong backend `.env` không khớp URL frontend | Sửa `CLIENT_URL` đúng bằng URL frontend đang chạy |
-| Đăng nhập admin không được | Chưa chạy `npm run seed`, hoặc sai email/password trong `.env` lúc seed | Chạy lại `npm run seed`, kiểm tra `ADMIN_EMAIL`/`ADMIN_PASSWORD` lúc đó |
-| `429 Too Many Requests` khi chat | Rate-limit đang chặn (bảo vệ quota) | Đợi 1 phút, hoặc tăng `CHAT_RATE_LIMIT_PER_MINUTE` trong `.env` |
-
+Provider                            Trang quản lý API key
 ---
-
-## 9. Hướng phát triển thêm (cho báo cáo)
-
-Phần "Core" ở trên đã chạy đầy đủ và ổn định — đây là phần dùng để demo
-trước hội đồng. Các tính năng dưới đây **chưa code** nhưng nên trình bày
-trong báo cáo như "hướng phát triển tương lai" (đúng kiến trúc adapter đã
-có sẵn nên dễ mở rộng):
-
-- **Voice chat**: dùng Web Speech API của browser (free, không cần key)
-- **Upload file/ảnh cho AI phân tích**: Gemini hỗ trợ vision free tier
-- **Web search cho AI**: tích hợp Tavily hoặc Brave Search API (free tier)
-- **Memory** (AI nhớ thông tin qua nhiều lần chat): lưu thêm 1 bảng `UserMemory`
-- **Projects** (nhóm nhiều cuộc trò chuyện theo chủ đề)
-- **OAuth** (đăng nhập Google) qua Passport.js
-
+Groq                                console.groq.com
+Google Gemini                       Google AI
+Studio
+OpenRouter                          openrouter.ai/keys
+Đặt key trong `backend/.env`, khởi động lại backend sau khi thay đổi cấu
+hình. Không đặt các key bí mật trong biến môi trường frontend có tiền tố
+`VITE_`, vì các giá trị đó có thể được đưa vào mã trình duyệt.
+🧑‍💻 Admin Dashboard
+Tài khoản quản trị được tạo theo cấu hình trong `backend/.env` và logic
+của `backend/seed.js`.
+Đặt `ADMIN_USERNAME`, `ADMIN_EMAIL` và `ADMIN_PASSWORD` trước khi
+seed.
+Chạy `npm run seed` trong thư mục `backend`.
+Đăng nhập bằng thông tin đã cấu hình.
+Mở khu vực quản trị nếu tài khoản được cấp quyền admin.
+Không sử dụng mật khẩu mẫu trong môi trường công khai. Nếu seed đã được
+chạy trước khi sửa biến môi trường, hãy kiểm tra logic seed và dữ liệu
+hiện có để xác định cách cập nhật tài khoản.
+🧪 Kiểm tra build frontend
+Từ terminal:
+``` bash
+cd frontend
+npm run build
+```
+Nếu build thành công, Vite sẽ tạo thư mục `frontend/dist/`. Thư mục này
+là sản phẩm build và thường không cần commit nếu dự án không có yêu cầu
+triển khai đặc biệt.
+🛡️ Bảo mật trước khi đưa lên GitHub
+Không commit `backend/.env`, `frontend/.env` hoặc bất kỳ file chứa
+API key/mật khẩu nào.
+Giữ `.env.example` chỉ gồm giá trị mẫu, không chứa thông tin đăng
+nhập thật.
+Kiểm tra `.gitignore` có loại trừ `.env`, `.env.*` (ngoại trừ file
+`.env.example` nếu cần), `node_modules/` và `dist/`.
+Không đăng công khai mật khẩu SQL Server, JWT secret, email
+credentials hoặc API key.
+Nếu secret đã được commit/push lên repository, xóa khỏi mã nguồn
+không đủ: hãy thu hồi/đổi secret đó và xử lý lịch sử Git nếu
+cần.
+Dùng mật khẩu quản trị mạnh, giới hạn quyền database và cấu hình
+HTTPS khi triển khai.
+🧯 Xử lý lỗi thường gặp
 ---
-
-Chúc bạn bảo vệ đồ án thành công! 🎓
+Lỗi                                 Hướng kiểm tra
+---
+Backend không kết nối SQL Server    Kiểm tra SQL Server service,
+host/port, tên database, tài khoản,
+mật khẩu và chế độ xác thực.
+`Login failed for user`             Xác nhận SQL Server Authentication
+đã được bật nếu dùng tài khoản SQL;
+kiểm tra lại thông tin trong
+`.env`.
+Frontend không gọi được API         Kiểm tra backend có chạy không, API
+base URL, `CLIENT_URL` và cấu hình
+CORS.
+AI trả lỗi hoặc hết quota           Kiểm tra API key, model được bật,
+hạn mức provider và log backend.
+Không đăng nhập được admin          Kiểm tra role trong database, giá
+trị cấu hình admin và logic
+`seed.js`.
+Port đã được sử dụng                Đóng tiến trình đang dùng port hoặc
+đổi port trong cấu hình phù hợp.
+Thay đổi `.env` không có tác dụng   Khởi động lại backend sau khi chỉnh
+biến môi trường.
+🛣️ Hướng phát triển
+Bổ sung kiểm thử tự động cho API và giao diện.
+Hoàn thiện phân trang và bộ lọc nâng cao cho trang quản trị.
+Bổ sung quan sát lỗi, logging và thống kê sử dụng.
+Cải thiện quản lý quota, timeout và retry cho từng AI provider.
+Chuẩn hóa quy trình triển khai production và backup database.
+🤝 Đóng góp
+Fork repository.
+Tạo branch mới: `git checkout -b feature/ten-tinh-nang`.
+Commit thay đổi: `git commit -m "Add: ten tinh nang"`.
+Push branch và tạo Pull Request.
+📄 Giấy phép
+Chưa xác định giấy phép phân phối cho repository này. Hãy bổ sung file
+`LICENSE` nếu bạn muốn công bố điều khoản sử dụng và tái phân phối.
+---
+::: {align="center"}
+Chat AI · Built with React, Node.js and SQL Server
+Nếu dự án hữu ích cho việc học tập, bạn có thể ⭐ repository trên
+GitHub.
+:::
