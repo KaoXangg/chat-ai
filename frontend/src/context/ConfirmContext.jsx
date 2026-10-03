@@ -2,24 +2,26 @@ import { createContext, useCallback, useContext, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { AlertTriangle } from "lucide-react";
 import { useModalA11y } from "../hooks/useModalA11y.js";
+import { useI18n } from "../i18n/I18nContext.jsx";
 
 const ConfirmContext = createContext(null);
 
 export function ConfirmProvider({ children }) {
+  const { t } = useI18n();
   const [state, setState] = useState(null); // { title, message, confirmLabel, danger, resolve }
 
   const confirm = useCallback((options) => {
     return new Promise((resolve) => {
       setState({
-        title: options.title || "Xác nhận",
+        title: options.title || t("confirm.title"),
         message: options.message || "",
-        confirmLabel: options.confirmLabel || "Xác nhận",
-        cancelLabel: options.cancelLabel || "Hủy",
+        confirmLabel: options.confirmLabel || t("confirm.ok"),
+        cancelLabel: options.cancelLabel || t("confirm.cancel"),
         danger: Boolean(options.danger),
         resolve,
       });
     });
-  }, []);
+  }, [t]);
 
   const handle = (value) => {
     state?.resolve(value);

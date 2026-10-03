@@ -6,21 +6,24 @@ import { useAuth } from "../../context/AuthContext.jsx";
 import clsx from "clsx";
 import BrandMark from "../../components/BrandMark.jsx";
 import Tooltip from "../../components/Tooltip.jsx";
+import { useI18n } from "../../i18n/I18nContext.jsx";
 
 const NAV_ITEMS = [
-  { to: "/admin", icon: LayoutDashboard, label: "Tổng quan", end: true },
-  { to: "/admin/users", icon: Users, label: "Người dùng" },
-  { to: "/admin/models", icon: Cpu, label: "Mô hình AI" },
-  { to: "/admin/conversations", icon: MessagesSquare, label: "Cuộc trò chuyện" },
+  { to: "/admin", icon: LayoutDashboard, labelKey: "admin.nav.dashboard", end: true },
+  { to: "/admin/users", icon: Users, labelKey: "admin.nav.users" },
+  { to: "/admin/models", icon: Cpu, labelKey: "admin.nav.models" },
+  { to: "/admin/conversations", icon: MessagesSquare, labelKey: "admin.nav.conversations" },
 ];
 
 export default function AdminLayout() {
   const { user, logout } = useAuth();
+  const { t } = useI18n();
   const navigate = useNavigate();
   const location = useLocation();
   const [drawerOpen, setDrawerOpen] = useState(false);
 
-  const currentLabel = NAV_ITEMS.find((n) => (n.end ? location.pathname === n.to : location.pathname.startsWith(n.to)))?.label || "Quản trị";
+  const currentItem = NAV_ITEMS.find((n) => (n.end ? location.pathname === n.to : location.pathname.startsWith(n.to)));
+  const currentLabel = currentItem ? t(currentItem.labelKey) : t("admin.nav.fallbackTitle");
 
   const sidebarContent = (
     <>
@@ -29,15 +32,15 @@ export default function AdminLayout() {
         <span className="font-display font-semibold text-sm tracking-tight">Chat AI Admin</span>
         <button
           onClick={() => setDrawerOpen(false)}
-          aria-label="Đóng menu quản trị"
-          className="md:hidden ml-auto p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/10"
+          aria-label={t("admin.layout.closeMenu")}
+          className="md:hidden ms-auto p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/10"
         >
           <X size={18} />
         </button>
       </div>
 
       <nav className="flex-1 mt-4 space-y-1">
-        {NAV_ITEMS.map(({ to, icon: Icon, label, end }) => (
+        {NAV_ITEMS.map(({ to, icon: Icon, labelKey, end }) => (
           <NavLink
             key={to}
             to={to}
@@ -50,7 +53,7 @@ export default function AdminLayout() {
               )
             }
           >
-            <Icon size={17} /> {label}
+            <Icon size={17} /> {t(labelKey)}
           </NavLink>
         ))}
       </nav>
@@ -60,7 +63,7 @@ export default function AdminLayout() {
           onClick={() => navigate("/chat")}
           className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-2xl text-sm hover:bg-black/5 dark:hover:bg-white/5"
         >
-          <ArrowLeft size={17} /> Về trang Chat
+          <ArrowLeft size={17} /> {t("admin.layout.backToChat")}
         </button>
         <div className="flex items-center gap-2 px-3 py-2">
           <div className="w-8 h-8 rounded-full bg-gradient-to-br from-brand-400 to-brand-600 text-white flex items-center justify-center text-xs font-semibold shrink-0 shadow-glow">
@@ -68,10 +71,10 @@ export default function AdminLayout() {
           </div>
           <div className="min-w-0 flex-1">
             <p className="text-sm truncate leading-tight">{user?.username}</p>
-            <p className="text-[11px] opacity-50 truncate leading-tight">Quản trị viên</p>
+            <p className="text-[11px] opacity-50 truncate leading-tight">{t("admin.layout.roleLabel")}</p>
           </div>
-          <Tooltip label="Đăng xuất" side="top">
-<button onClick={logout} aria-label="Đăng xuất" className="shrink-0 p-1.5 rounded-lg hover:bg-red-500/10 text-red-500 transition-colors">
+          <Tooltip label={t("sidebar.logout")} side="top">
+<button onClick={logout} aria-label={t("sidebar.logout")} className="shrink-0 p-1.5 rounded-lg hover:bg-red-500/10 text-red-500 transition-colors">
             <LogOut size={15} />
           </button>
 </Tooltip>
@@ -111,7 +114,7 @@ export default function AdminLayout() {
         <header className="md:hidden flex items-center gap-2 px-4 py-3 border-b border-edge-light dark:border-edge-dark glass">
           <button
             onClick={() => setDrawerOpen(true)}
-            aria-label="Mở menu quản trị"
+            aria-label={t("admin.layout.openMenu")}
             className="p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/10"
           >
             <Menu size={20} />

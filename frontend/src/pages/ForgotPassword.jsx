@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Loader2, AlertCircle, CheckCircle2 } from "lucide-react";
 import api from "../api/axios.js";
 import AuthLayout from "../components/AuthLayout.jsx";
+import { useI18n } from "../i18n/I18nContext.jsx";
 
 export default function ForgotPassword() {
   const [email, setEmail] = useState("");
@@ -11,6 +12,7 @@ export default function ForgotPassword() {
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+  const { t, errorMessage } = useI18n();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -18,11 +20,11 @@ export default function ForgotPassword() {
     setMessage("");
     setLoading(true);
     try {
-      const res = await api.post("/auth/forgot-password", { email });
-      setMessage(res.data.data.message);
+      await api.post("/auth/forgot-password", { email });
+      setMessage(t("auth.forgot.sent"));
       setTimeout(() => navigate(`/reset-password?email=${encodeURIComponent(email)}`), 1200);
     } catch (err) {
-      setError(err.response?.data?.error?.message || "Không thể gửi yêu cầu.");
+      setError(errorMessage(err, "auth.forgot.failed"));
     } finally {
       setLoading(false);
     }
@@ -30,13 +32,13 @@ export default function ForgotPassword() {
 
   return (
     <AuthLayout
-      title="Quên mật khẩu"
-      subtitle="Nhập email để nhận mã xác nhận đặt lại mật khẩu"
+      title={t("auth.forgot.title")}
+      subtitle={t("auth.forgot.subtitle")}
       footer={
         <>
-          Đã nhớ mật khẩu?{" "}
+          {t("auth.forgot.remembered")}{" "}
           <Link to="/login" className="text-brand-500 font-medium hover:underline">
-            Đăng nhập
+            {t("auth.forgot.login")}
           </Link>
         </>
       }
@@ -46,10 +48,10 @@ export default function ForgotPassword() {
           type="email"
           required
           autoComplete="email"
-          placeholder="Email"
+          placeholder={t("auth.forgot.email")}
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          className="w-full px-4 py-2.5 rounded-2xl border border-edge-light dark:border-edge-dark bg-white/50 dark:bg-white/5 outline-none focus:border-brand-400 focus:shadow-glow text-sm transition-all"
+          className="w-full ps-4 pe-4 py-2.5 rounded-2xl border border-edge-light dark:border-edge-dark bg-white/50 dark:bg-white/5 outline-none focus:border-brand-400 focus:shadow-glow text-sm transition-all"
         />
 
         <AnimatePresence>
@@ -84,7 +86,7 @@ export default function ForgotPassword() {
           className="w-full flex items-center justify-center gap-2 py-2.5 rounded-2xl bg-gradient-to-r from-brand-500 to-brand-600 hover:shadow-glow disabled:opacity-60 text-white text-sm font-medium transition-all"
         >
           {loading && <Loader2 size={16} className="animate-spin" />}
-          Gửi mã xác nhận
+          {t("auth.forgot.submit")}
         </motion.button>
       </form>
     </AuthLayout>

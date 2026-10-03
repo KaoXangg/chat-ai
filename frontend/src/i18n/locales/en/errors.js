@@ -1,0 +1,13 @@
+export default {
+  "error.PROVIDER_UNAVAILABLE": "Cannot reach the AI right now. Please try again.",
+  "error.QUOTA_EXCEEDED": "You have used all of today's token quota for the available models. The quota resets at 00:00; you can also choose another model.",
+  "error.NOT_FOUND": "The requested item was not found.",
+  "error.FORBIDDEN": "You do not have permission to do this.",
+  "error.EMPTY_MESSAGE": "The message cannot be empty.",
+  "error.MESSAGE_TOO_LONG": "The message is too long.",
+  "error.IMAGE_NOT_SUPPORTED": "The selected model does not support image analysis. Choose a model with the Vision label.",
+  "error.INVALID_IMAGE": "An image is invalid or too large (6MB max per image).",
+  "error.INVALID_FEEDBACK": "Invalid feedback value.",
+  "error.REQUEST_FAILED": "Cannot connect to the server.",
+  "error.CONVERSATION_FAILED": "Could not create the conversation.",
+};

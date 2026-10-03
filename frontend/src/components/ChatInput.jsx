@@ -4,6 +4,7 @@ import clsx from "clsx";
 import { Send, Square, Paperclip, Globe, X, ImagePlus } from "lucide-react";
 import { useToast } from "../context/ToastContext.jsx";
 import Tooltip from "./Tooltip.jsx";
+import { useI18n } from "../i18n/I18nContext.jsx";
 
 const MAX_IMAGE_BYTES = 6 * 1024 * 1024;
 const MAX_IMAGES = 4;
@@ -18,6 +19,7 @@ export default function ChatInput({ onSend, isStreaming, disabled = false, onSto
   const fileInputRef = useRef(null);
   const dragCounterRef = useRef(0);
   const toast = useToast();
+  const { t } = useI18n();
 
   const resizeTextarea = () => {
     const el = textareaRef.current;
@@ -38,22 +40,22 @@ export default function ChatInput({ onSend, isStreaming, disabled = false, onSto
 
     const room = MAX_IMAGES - images.length;
     if (room <= 0) {
-      toast.warning(`Chỉ được đính kèm tối đa ${MAX_IMAGES} ảnh mỗi tin nhắn.`);
+      toast.warning(t("input.maxImages", { max: MAX_IMAGES }));
       return;
     }
 
     const toProcess = files.slice(0, room);
     if (files.length > room) {
-      toast.warning(`Chỉ được đính kèm tối đa ${MAX_IMAGES} ảnh — đã bỏ qua ${files.length - room} ảnh thừa.`);
+      toast.warning(t("input.maxImagesSkipped", { max: MAX_IMAGES, skipped: files.length - room }));
     }
 
     toProcess.forEach((file) => {
       if (!file.type.startsWith("image/")) {
-        toast.error(`"${file.name}" không phải là ảnh.`);
+        toast.error(t("input.notImage", { name: file.name }));
         return;
       }
       if (file.size > MAX_IMAGE_BYTES) {
-        toast.error(`"${file.name}" vượt quá 6MB.`);
+        toast.error(t("input.tooLarge", { name: file.name }));
         return;
       }
 
@@ -64,7 +66,7 @@ export default function ChatInput({ onSend, isStreaming, disabled = false, onSto
         const base64 = dataUrl.split(",")[1];
         setImages((prev) => [...prev, { id, previewUrl: dataUrl, mimeType: file.type, data: base64 }]);
       };
-      reader.onerror = () => toast.error(`Không thể đọc ảnh "${file.name}".`);
+      reader.onerror = () => toast.error(t("input.readFail", { name: file.name }));
       reader.readAsDataURL(file);
     });
   };
@@ -101,7 +103,7 @@ export default function ChatInput({ onSend, isStreaming, disabled = false, onSto
     dragCounterRef.current = 0;
     setIsDraggingOver(false);
     if (!allowImage || disabled) {
-      if (e.dataTransfer?.files?.length) toast.warning("Chọn một mô hình hỗ trợ hình ảnh (Vision) để đính kèm ảnh.");
+      if (e.dataTransfer?.files?.length) toast.warning(t("input.needVision"));
       return;
     }
     addFiles(e.dataTransfer.files);
@@ -110,7 +112,7 @@ export default function ChatInput({ onSend, isStreaming, disabled = false, onSto
   const handleSubmit = () => {
     const trimmed = value.trim();
     if ((!trimmed && images.length === 0) || isStreaming) return;
-    onSend(trimmed || "Mô tả (những) hình ảnh này.", {
+    onSend(trimmed || t("input.describe"), {
       images: images.map(({ mimeType, data }) => ({ mimeType, data })),
       useWebSearch: webSearchEnabled,
     });
@@ -148,7 +150,7 @@ export default function ChatInput({ onSend, isStreaming, disabled = false, onSto
               exit={{ opacity: 0 }}
               className="absolute -inset-2 z-10 rounded-[2rem] border-2 border-dashed border-brand-400 bg-brand-500/10 backdrop-blur-sm flex items-center justify-center gap-2 text-sm font-medium text-brand-600 dark:text-brand-300 pointer-events-none"
             >
-              <ImagePlus size={18} /> Thả ảnh vào đây
+              <ImagePlus size={18} /> {t("input.dropHere")}
             </motion.div>
           )}
         </AnimatePresence>
@@ -165,13 +167,13 @@ export default function ChatInput({ onSend, isStreaming, disabled = false, onSto
               >
                 <img
                   src={img.previewUrl}
-                  alt="Ảnh đính kèm"
+                  alt={t("input.imageAlt")}
                   className="h-16 w-16 rounded-xl object-cover border border-edge-light dark:border-edge-dark"
                 />
                 <button
                   onClick={() => removeImage(img.id)}
-                  aria-label="Xóa ảnh đính kèm"
-                  className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-black/70 text-white flex items-center justify-center hover:bg-black/90 transition-colors"
+                  aria-label={t("input.removeImage")}
+                  className="absolute -top-1.5 -end-1.5 w-5 h-5 rounded-full bg-black/70 text-white flex items-center justify-center hover:bg-black/90 transition-colors"
                 >
                   <X size={12} />
                 </button>
@@ -180,7 +182,7 @@ export default function ChatInput({ onSend, isStreaming, disabled = false, onSto
             {images.length < MAX_IMAGES && (
               <button
                 onClick={() => fileInputRef.current?.click()}
-                aria-label="Thêm ảnh"
+                aria-label={t("input.addImage")}
                 className="h-16 w-16 rounded-xl border border-dashed border-edge-light dark:border-edge-dark flex items-center justify-center opacity-50 hover:opacity-90 hover:border-brand-400 transition-colors"
               >
                 <ImagePlus size={18} />
@@ -202,24 +204,24 @@ export default function ChatInput({ onSend, isStreaming, disabled = false, onSto
             multiple
             className="hidden"
             onChange={handleFileChange}
-            aria-label="Chọn hình ảnh đính kèm"
+            aria-label={t("input.fileLabel")}
           />
-          <Tooltip label={allowImage ? `Đính kèm hình ảnh (tối đa ${MAX_IMAGES})` : "Chọn mô hình hỗ trợ hình ảnh (Vision) để đính kèm ảnh"} side="top" align="start" className="inline-flex shrink-0 [&>button:disabled]:pointer-events-none">
+          <Tooltip label={allowImage ? t("input.attachTip", { max: MAX_IMAGES }) : t("input.attachNoVision")} side="top" align="start" className="inline-flex shrink-0 [&>button:disabled]:pointer-events-none">
 <button
             onClick={() => allowImage && fileInputRef.current?.click()}
             disabled={!allowImage || disabled || images.length >= MAX_IMAGES}
-            aria-label={allowImage ? "Đính kèm hình ảnh" : "Đính kèm hình ảnh (chỉ khả dụng với mô hình hỗ trợ hình ảnh)"}
+            aria-label={allowImage ? t("input.attachAria") : t("input.attachAriaNoVision")}
             className="shrink-0 w-9 h-9 rounded-2xl flex items-center justify-center hover:bg-black/5 dark:hover:bg-white/10 disabled:opacity-30 transition-colors"
           >
             <Paperclip size={17} />
           </button>
 </Tooltip>
 
-          <Tooltip label="Tìm kiếm thông tin trên web trước khi trả lời" side="top" align="start" className="inline-flex shrink-0 [&>button:disabled]:pointer-events-none">
+          <Tooltip label={t("input.webTip")} side="top" align="start" className="inline-flex shrink-0 [&>button:disabled]:pointer-events-none">
 <button
             onClick={() => setWebSearchEnabled((v) => !v)}
             disabled={disabled}
-            aria-label="Bật/tắt tìm kiếm web"
+            aria-label={t("input.webAria")}
             aria-pressed={webSearchEnabled}
             className={clsx(
               "shrink-0 w-9 h-9 rounded-2xl flex items-center justify-center transition-colors disabled:opacity-30",
@@ -231,7 +233,7 @@ export default function ChatInput({ onSend, isStreaming, disabled = false, onSto
 </Tooltip>
 
           <label htmlFor="chat-input-textarea" className="sr-only">
-            Nhập câu hỏi
+            {t("input.label")}
           </label>
           <textarea
             id="chat-input-textarea"
@@ -248,11 +250,11 @@ export default function ChatInput({ onSend, isStreaming, disabled = false, onSto
             }}
             disabled={disabled}
             rows={1}
-            placeholder="Nhập câu hỏi của bạn... (Enter để gửi, Shift+Enter để xuống dòng)"
+            placeholder={t("input.placeholder")}
             className="flex-1 resize-none bg-transparent outline-none text-[15px] py-2 max-h-48 placeholder:text-black/40 dark:placeholder:text-white/40"
           />
           <Tooltip
-            label={isStreaming ? "Dừng trả lời" : "Gửi"}
+            label={isStreaming ? t("input.stop") : t("input.send")}
             shortcut={isStreaming ? undefined : "Enter"}
             side="top"
             align="end"
@@ -268,7 +270,7 @@ export default function ChatInput({ onSend, isStreaming, disabled = false, onSto
                 whileTap={{ scale: 0.9 }}
                 onClick={onStop}
                 className="shrink-0 w-10 h-10 rounded-2xl bg-red-500 hover:bg-red-600 text-white flex items-center justify-center"
-                aria-label="Dừng trả lời"
+                aria-label={t("input.stop")}
               >
                 <Square size={16} />
               </motion.button>
@@ -282,7 +284,7 @@ export default function ChatInput({ onSend, isStreaming, disabled = false, onSto
                 onClick={handleSubmit}
                 disabled={(!value.trim() && images.length === 0) || disabled}
                 className="shrink-0 w-10 h-10 rounded-2xl bg-gradient-to-br from-brand-500 to-brand-600 disabled:opacity-30 text-white flex items-center justify-center"
-                aria-label="Gửi tin nhắn"
+                aria-label={t("input.sendAria")}
               >
                 <Send size={16} />
               </motion.button>
@@ -292,7 +294,7 @@ export default function ChatInput({ onSend, isStreaming, disabled = false, onSto
         </div>
       </div>
       <p className="text-center text-xs text-black/30 dark:text-white/30 mt-2.5">
-        Chat AI có thể trả lời sai. Hãy kiểm tra lại thông tin quan trọng.
+        {t("input.disclaimer")}
       </p>
     </div>
   );

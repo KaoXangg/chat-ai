@@ -23,12 +23,26 @@ export const sequelize = new Sequelize(
 /**
  * Thêm các cột mới vào bảng đã có (sync() không tự thêm cột). An toàn khi chạy lại nhiều lần.
  * - AIModels.dailyTokenLimit: hạn mức token/ngày cho mỗi người dùng (0 = không giới hạn).
+ * - Users.uiLanguage / Users.aiLanguage: ngôn ngữ giao diện và ngôn ngữ AI trả lời.
  */
 async function ensureSchemaUpdates() {
   await sequelize.query(`
     IF OBJECT_ID('dbo.AIModels', 'U') IS NOT NULL AND COL_LENGTH('dbo.AIModels', 'dailyTokenLimit') IS NULL
     BEGIN
       ALTER TABLE dbo.AIModels ADD dailyTokenLimit INT NOT NULL CONSTRAINT DF_AIModels_dailyTokenLimit DEFAULT (0);
+    END
+  `);
+
+  await sequelize.query(`
+    IF OBJECT_ID('dbo.Users', 'U') IS NOT NULL AND COL_LENGTH('dbo.Users', 'uiLanguage') IS NULL
+    BEGIN
+      ALTER TABLE dbo.Users ADD uiLanguage NVARCHAR(10) NULL;
+    END
+  `);
+  await sequelize.query(`
+    IF OBJECT_ID('dbo.Users', 'U') IS NOT NULL AND COL_LENGTH('dbo.Users', 'aiLanguage') IS NULL
+    BEGIN
+      ALTER TABLE dbo.Users ADD aiLanguage NVARCHAR(10) NOT NULL CONSTRAINT DF_Users_aiLanguage DEFAULT ('auto');
     END
   `);
 }

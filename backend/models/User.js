@@ -36,6 +36,10 @@ const User = sequelize.define(
       validate: { isIn: [["active", "banned"]] },
     },
     avatar: { type: DataTypes.STRING(500), allowNull: true, defaultValue: "" },
+    // Ngôn ngữ giao diện đã chọn (null = chưa chọn, dùng lựa chọn của trình duyệt).
+    uiLanguage: { type: DataTypes.STRING(10), allowNull: true },
+    // Ngôn ngữ AI trả lời: "auto" (theo tin nhắn của người dùng) hoặc một mã ngôn ngữ như "en", "ja".
+    aiLanguage: { type: DataTypes.STRING(10), allowNull: false, defaultValue: "auto" },
     // Virtual field de giu tuong thich voi frontend (dang dung `_id` kieu Mongo).
     _id: {
       type: DataTypes.VIRTUAL,

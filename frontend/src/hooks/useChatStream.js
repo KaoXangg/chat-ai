@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState } from "react";
 import api from "../api/axios.js";
+import { useI18n } from "../i18n/I18nContext.jsx";
 
 /**
  * Lỗi xảy ra TRƯỚC khi máy chủ bắt đầu stream (HTTP 4xx/5xx, mất mạng khi gửi...).
@@ -12,18 +13,28 @@ class StreamRequestError extends Error {
   }
 }
 
-const NETWORK_MESSAGE = "Không thể kết nối với máy chủ. Hãy kiểm tra mạng rồi thử lại.";
-const INTERRUPTED_MESSAGE = "Kết nối bị gián đoạn khi đang nhận câu trả lời.";
-
 /**
  * handlers.onError(message, code, { preStream, userMessageId })
  *  - preStream: true nếu lỗi xảy ra trước khi stream bắt đầu.
  *  - userMessageId: id thật của tin nhắn người dùng (nếu máy chủ đã lưu).
  */
 export function useChatStream() {
+  const { t } = useI18n();
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamError, setStreamError] = useState(null);
   const abortRef = useRef(null);
+
+  // runSSE là useCallback([]) nên dùng ref để luôn lấy hàm dịch theo ngôn ngữ giao diện hiện tại.
+  const tRef = useRef(t);
+  tRef.current = t;
+
+  /** Thông báo lỗi theo mã (error.<CODE>) trong ngôn ngữ giao diện; không có thì dùng nội dung server gửi. */
+  const messageForCode = (code, serverMessage) => {
+    const key = `error.${code}`;
+    const translated = tRef.current(key);
+    if (translated !== key) return translated;
+    return serverMessage || tRef.current("error.generic");
+  };
 
   const runSSE = useCallback(async (url, body, { onToken, onDone, onError } = {}) => {
     setIsStreaming(true);
@@ -48,7 +59,7 @@ export function useChatStream() {
         });
       } catch (err) {
         if (err.name === "AbortError") throw err;
-        throw new StreamRequestError(NETWORK_MESSAGE, "NETWORK_ERROR");
+        throw new StreamRequestError("", "NETWORK_ERROR");
       }
 
       if (res.status === 401) {
@@ -58,13 +69,13 @@ export function useChatStream() {
         if (!window.location.pathname.startsWith("/login")) {
           window.location.href = "/login";
         }
-        throw new StreamRequestError("Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.", "UNAUTHORIZED");
+        throw new StreamRequestError("", "INVALID_TOKEN");
       }
 
       if (!res.ok || !res.body) {
         const errJson = await res.json().catch(() => null);
         throw new StreamRequestError(
-          errJson?.error?.message || "Không thể kết nối với máy chủ.",
+          errJson?.error?.message || "",
           errJson?.error?.code || (res.status === 429 ? "RATE_LIMITED" : "REQUEST_FAILED")
         );
       }
@@ -99,9 +110,11 @@ export function useChatStream() {
           if (data.token) onToken?.(data.token);
           if (data.error) {
             finished = true;
-            const message = typeof data.error === "string" ? data.error : data.error?.message || "Đã xảy ra lỗi.";
+            const code = data.code || "PROVIDER_UNAVAILABLE";
+            const serverMessage = typeof data.error === "string" ? data.error : data.error?.message;
+            const message = messageForCode(code, serverMessage);
             setStreamError(message);
-            onError?.(message, data.code || "PROVIDER_UNAVAILABLE", { preStream: false, userMessageId: data.userMessageId });
+            onError?.(message, code, { preStream: false, userMessageId: data.userMessageId });
           }
           if (data.done) {
             finished = true;
@@ -112,15 +125,19 @@ export function useChatStream() {
 
       // Kết nối đóng mà chưa nhận được done/error -> coi như bị gián đoạn.
       if (!finished) {
-        setStreamError(INTERRUPTED_MESSAGE);
-        onError?.(INTERRUPTED_MESSAGE, "NETWORK_ERROR", { preStream: false });
+        const message = tRef.current("chat.stream.interrupted");
+        setStreamError(message);
+        onError?.(message, "NETWORK_ERROR", { preStream: false });
       }
     } catch (err) {
       if (err.name !== "AbortError") {
         const preStream = !started;
         const isRequestError = err instanceof StreamRequestError;
-        const message = isRequestError ? err.message : preStream ? NETWORK_MESSAGE : INTERRUPTED_MESSAGE;
         const code = isRequestError ? err.code : "NETWORK_ERROR";
+        const message =
+          isRequestError || preStream
+            ? messageForCode(code === "NETWORK_ERROR" ? "NETWORK" : code, isRequestError ? err.message : "")
+            : tRef.current("chat.stream.interrupted");
         setStreamError(message);
         onError?.(message, code, { preStream });
       }

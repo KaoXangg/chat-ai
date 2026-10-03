@@ -33,6 +33,11 @@ BEGIN
 END
 GO
 
+/* Nâng cấp DB cũ: ngôn ngữ trả lời của AI do người dùng chọn ('auto' = theo tin nhắn) */
+IF COL_LENGTH('dbo.Users', 'aiLanguage') IS NULL
+    ALTER TABLE dbo.Users ADD aiLanguage NVARCHAR(20) NOT NULL CONSTRAINT DF_Users_aiLanguage DEFAULT ('auto');
+GO
+
 /* ---------- Conversations ---------- */
 IF OBJECT_ID('dbo.Conversations', 'U') IS NULL
 BEGIN

@@ -3,15 +3,19 @@ function imageCount(message) {
   return message.imageBase64 ? 1 : 0;
 }
 
-export function conversationToMarkdown(title, messages) {
-  const lines = [`# ${title}`, "", `_Xuất từ Chat AI lúc ${new Date().toLocaleString("vi-VN")}_`, ""];
+/**
+ * Chuyển cuộc trò chuyện sang Markdown. `labels` do nơi gọi truyền vào (đã dịch theo ngôn ngữ giao diện):
+ * { exportedAt, you, ai, attachedImages } - exportedAt/attachedImages là hàm nhận tham số.
+ */
+export function conversationToMarkdown(title, messages, labels, locale = "en") {
+  const lines = [`# ${title}`, "", `_${labels.exportedAt(new Date().toLocaleString(locale))}_`, ""];
 
   for (const m of messages) {
     const isUser = m.role === "user";
-    const who = isUser ? "🧑 Bạn" : `🤖 AI${m.provider ? ` (${m.provider})` : ""}`;
+    const who = isUser ? `🧑 ${labels.you}` : `🤖 ${labels.ai}${m.provider ? ` (${m.provider})` : ""}`;
     lines.push("---", "", `## ${who}`, "");
     const n = imageCount(m);
-    if (n > 0) lines.push(`_[Đính kèm ${n} ảnh]_`, "");
+    if (n > 0) lines.push(`_[${labels.attachedImages(n)}]_`, "");
     lines.push(m.content || "", "");
   }
   return lines.join("\n");
@@ -29,7 +33,7 @@ export function downloadTextFile(filename, text, mime = "text/markdown;charset=u
   URL.revokeObjectURL(url);
 }
 
-export function safeFileName(name, fallback = "cuoc-tro-chuyen") {
+export function safeFileName(name, fallback = "conversation") {
   const cleaned = String(name || "").replace(/[\\/:*?"<>|]+/g, "").trim().slice(0, 60);
   return cleaned || fallback;
 }

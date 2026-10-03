@@ -14,6 +14,7 @@ import {
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, BarChart, Bar, Cell } from "recharts";
 import api from "../../api/axios.js";
 import { StatCardSkeleton, Skeleton } from "../../components/Skeleton.jsx";
+import { useI18n } from "../../i18n/I18nContext.jsx";
 
 const STAT_TONES = {
   brand: "from-brand-500/15 to-brand-600/5 text-brand-600 dark:text-brand-300",
@@ -23,6 +24,7 @@ const STAT_TONES = {
 };
 
 function StatCard({ icon: Icon, label, value, tone = "brand" }) {
+  const { lang } = useI18n();
   return (
     <motion.div
       variants={{ hidden: { opacity: 0, y: 12 }, show: { opacity: 1, y: 0 } }}
@@ -34,21 +36,22 @@ function StatCard({ icon: Icon, label, value, tone = "brand" }) {
       </div>
       <div className="min-w-0">
         <p className="text-xs opacity-50 truncate">{label}</p>
-        <p className="text-xl font-display font-semibold tabular-nums">{value.toLocaleString("vi-VN")}</p>
+        <p className="text-xl font-display font-semibold tabular-nums">{value.toLocaleString(lang)}</p>
       </div>
     </motion.div>
   );
 }
 
 const QUICK_LINKS = [
-  { to: "/admin/users", icon: Users, label: "Quản lý người dùng" },
-  { to: "/admin/models", icon: Cpu, label: "Quản lý mô hình AI" },
-  { to: "/admin/conversations", icon: MessagesSquare, label: "Kiểm duyệt hội thoại" },
+  { to: "/admin/users", icon: Users, labelKey: "admin.dash.quickUsers" },
+  { to: "/admin/models", icon: Cpu, labelKey: "admin.dash.quickModels" },
+  { to: "/admin/conversations", icon: MessagesSquare, labelKey: "admin.dash.quickConversations" },
 ];
 
 const PROVIDER_COLORS = { groq: "#f97316", gemini: "#6d5bff", openrouter: "#2dd4bf" };
 
 export default function Dashboard() {
+  const { t } = useI18n();
   const [stats, setStats] = useState(null);
   const [loadError, setLoadError] = useState(false);
 
@@ -62,7 +65,7 @@ export default function Dashboard() {
   if (loadError) {
     return (
       <div className="max-w-6xl">
-        <p className="text-sm text-red-500">Không thể tải dữ liệu tổng quan. Vui lòng thử lại sau.</p>
+        <p className="text-sm text-red-500">{t("admin.dash.loadFail")}</p>
       </div>
     );
   }
@@ -71,8 +74,8 @@ export default function Dashboard() {
     return (
       <div className="space-y-6 max-w-6xl">
         <div>
-          <h1 className="font-display text-xl font-semibold tracking-tight">Tổng quan hệ thống</h1>
-          <p className="text-sm opacity-50">Theo dõi hoạt động của Chat AI</p>
+          <h1 className="font-display text-xl font-semibold tracking-tight">{t("admin.dash.title")}</h1>
+          <p className="text-sm opacity-50">{t("admin.dash.subtitle")}</p>
         </div>
         <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
           {Array.from({ length: 5 }).map((_, i) => (
@@ -104,8 +107,8 @@ export default function Dashboard() {
   return (
     <div className="space-y-6 max-w-6xl">
       <div>
-        <h1 className="font-display text-xl font-semibold tracking-tight">Tổng quan hệ thống</h1>
-        <p className="text-sm opacity-50">Theo dõi hoạt động của Chat AI</p>
+        <h1 className="font-display text-xl font-semibold tracking-tight">{t("admin.dash.title")}</h1>
+        <p className="text-sm opacity-50">{t("admin.dash.subtitle")}</p>
       </div>
 
       <motion.div
@@ -114,18 +117,18 @@ export default function Dashboard() {
         variants={{ show: { transition: { staggerChildren: 0.06 } } }}
         className="grid grid-cols-2 md:grid-cols-5 gap-3"
       >
-        <StatCard icon={Users} label="Tổng người dùng" value={totals.totalUsers} tone="brand" />
-        <StatCard icon={CheckCircle2} label="Đang hoạt động" value={totals.activeUsers} tone="ion" />
-        <StatCard icon={ShieldBan} label="Bị khóa" value={totals.bannedUsers} tone="danger" />
-        <StatCard icon={MessagesSquare} label="Cuộc trò chuyện" value={totals.totalConversations} tone="amber" />
-        <StatCard icon={MessageSquare} label="Tổng tin nhắn" value={totals.totalMessages} tone="brand" />
+        <StatCard icon={Users} label={t("admin.dash.totalUsers")} value={totals.totalUsers} tone="brand" />
+        <StatCard icon={CheckCircle2} label={t("admin.dash.activeUsers")} value={totals.activeUsers} tone="ion" />
+        <StatCard icon={ShieldBan} label={t("admin.dash.bannedUsers")} value={totals.bannedUsers} tone="danger" />
+        <StatCard icon={MessagesSquare} label={t("admin.dash.conversations")} value={totals.totalConversations} tone="amber" />
+        <StatCard icon={MessageSquare} label={t("admin.dash.messages")} value={totals.totalMessages} tone="brand" />
       </motion.div>
 
       <div className="grid md:grid-cols-3 gap-4">
         <div className="md:col-span-2 rounded-2xl glass border border-edge-light dark:border-edge-dark p-4 shadow-soft">
-          <h3 className="text-sm font-semibold mb-3">Tin nhắn / ngày (7 ngày gần nhất)</h3>
+          <h3 className="text-sm font-semibold mb-3">{t("admin.dash.perDay")}</h3>
           {chartData.length === 0 ? (
-            <div className="h-[220px] flex items-center justify-center text-sm opacity-40">Chưa có dữ liệu tin nhắn gần đây</div>
+            <div className="h-[220px] flex items-center justify-center text-sm opacity-40">{t("admin.dash.noMessages")}</div>
           ) : (
             <ResponsiveContainer width="100%" height={220}>
               <LineChart data={chartData}>
@@ -146,7 +149,7 @@ export default function Dashboard() {
         </div>
 
         <div className="rounded-2xl glass border border-edge-light dark:border-edge-dark p-4 shadow-soft">
-          <h3 className="text-sm font-semibold mb-3">Trạng thái nhà cung cấp AI</h3>
+          <h3 className="text-sm font-semibold mb-3">{t("admin.dash.providers")}</h3>
           <div className="space-y-2">
             {ALL_PROVIDERS.map((p) => {
               const configured = configuredProviders.includes(p);
@@ -157,20 +160,20 @@ export default function Dashboard() {
                     {configured ? <CheckCircle2 size={15} className="text-ion-500" /> : <XCircle size={15} className="text-red-400" />}
                     <span className="text-sm capitalize">{p}</span>
                   </div>
-                  <span className="text-xs opacity-50">{usage} yêu cầu</span>
+                  <span className="text-xs opacity-50">{t("admin.dash.requests", { n: usage })}</span>
                 </div>
               );
             })}
           </div>
-          <p className="text-xs opacity-40 mt-3">Nhà cung cấp chưa có API key sẽ hiện dấu X. Thêm key vào tệp .env của backend rồi khởi động lại máy chủ.</p>
+          <p className="text-xs opacity-40 mt-3">{t("admin.dash.providerHint")}</p>
         </div>
       </div>
 
       <div className="grid md:grid-cols-3 gap-4">
         <div className="md:col-span-2 rounded-2xl glass border border-edge-light dark:border-edge-dark p-4 shadow-soft">
-          <h3 className="text-sm font-semibold mb-3">Phân bổ phản hồi theo nhà cung cấp</h3>
+          <h3 className="text-sm font-semibold mb-3">{t("admin.dash.distribution")}</h3>
           {usageData.length === 0 ? (
-            <div className="h-[160px] flex items-center justify-center text-sm opacity-40">Chưa có phản hồi nào được ghi nhận</div>
+            <div className="h-[160px] flex items-center justify-center text-sm opacity-40">{t("admin.dash.noResponses")}</div>
           ) : (
             <ResponsiveContainer width="100%" height={160}>
               <BarChart data={usageData} layout="vertical" margin={{ left: 8 }}>
@@ -188,9 +191,9 @@ export default function Dashboard() {
         </div>
 
         <div className="rounded-2xl glass border border-edge-light dark:border-edge-dark p-4 shadow-soft flex flex-col">
-          <h3 className="text-sm font-semibold mb-3">Truy cập nhanh</h3>
+          <h3 className="text-sm font-semibold mb-3">{t("admin.dash.quick")}</h3>
           <div className="space-y-1.5 flex-1">
-            {QUICK_LINKS.map(({ to, icon: Icon, label }) => (
+            {QUICK_LINKS.map(({ to, icon: Icon, labelKey }) => (
               <Link
                 key={to}
                 to={to}
@@ -199,7 +202,7 @@ export default function Dashboard() {
                 <span className="w-8 h-8 rounded-xl bg-brand-500/10 text-brand-500 flex items-center justify-center shrink-0">
                   <Icon size={15} />
                 </span>
-                <span className="flex-1">{label}</span>
+                <span className="flex-1">{t(labelKey)}</span>
                 <ArrowUpRight size={14} className="opacity-0 group-hover:opacity-50 transition-opacity" />
               </Link>
             ))}

@@ -5,6 +5,7 @@ import { Loader2, AlertCircle } from "lucide-react";
 import api from "../api/axios.js";
 import AuthLayout from "../components/AuthLayout.jsx";
 import PasswordField from "../components/PasswordField.jsx";
+import { useI18n } from "../i18n/I18nContext.jsx";
 
 export default function ResetPassword() {
   const [searchParams] = useSearchParams();
@@ -15,12 +16,13 @@ export default function ResetPassword() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+  const { t, errorMessage } = useI18n();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
     if (newPassword !== confirmPassword) {
-      setError("Mật khẩu xác nhận không khớp.");
+      setError(t("auth.reset.mismatch"));
       return;
     }
     setLoading(true);
@@ -28,7 +30,7 @@ export default function ResetPassword() {
       await api.post("/auth/reset-password", { email, otp, newPassword });
       navigate("/login");
     } catch (err) {
-      setError(err.response?.data?.error?.message || "Đặt lại mật khẩu không thành công.");
+      setError(errorMessage(err, "auth.reset.failed"));
     } finally {
       setLoading(false);
     }
@@ -36,11 +38,11 @@ export default function ResetPassword() {
 
   return (
     <AuthLayout
-      title="Đặt lại mật khẩu"
-      subtitle="Nhập mã xác nhận đã gửi tới email của bạn"
+      title={t("auth.reset.title")}
+      subtitle={t("auth.reset.subtitle")}
       footer={
         <Link to="/login" className="text-brand-500 font-medium hover:underline">
-          Quay lại đăng nhập
+          {t("auth.reset.back")}
         </Link>
       }
     >
@@ -49,24 +51,24 @@ export default function ResetPassword() {
           type="email"
           required
           autoComplete="email"
-          placeholder="Email"
+          placeholder={t("auth.reset.email")}
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          className="w-full px-4 py-2.5 rounded-2xl border border-edge-light dark:border-edge-dark bg-white/50 dark:bg-white/5 outline-none focus:border-brand-400 focus:shadow-glow text-sm transition-all"
+          className="w-full ps-4 pe-4 py-2.5 rounded-2xl border border-edge-light dark:border-edge-dark bg-white/50 dark:bg-white/5 outline-none focus:border-brand-400 focus:shadow-glow text-sm transition-all"
         />
         <input
           required
           inputMode="numeric"
           maxLength={6}
-          placeholder="Mã xác nhận (OTP)"
+          placeholder={t("auth.reset.otp")}
           value={otp}
           onChange={(e) => setOtp(e.target.value)}
-          className="w-full px-4 py-2.5 rounded-2xl border border-edge-light dark:border-edge-dark bg-white/50 dark:bg-white/5 outline-none focus:border-brand-400 focus:shadow-glow text-sm transition-all tracking-widest"
+          className="w-full ps-4 pe-4 py-2.5 rounded-2xl border border-edge-light dark:border-edge-dark bg-white/50 dark:bg-white/5 outline-none focus:border-brand-400 focus:shadow-glow text-sm transition-all tracking-widest"
         />
         <PasswordField
           value={newPassword}
           onChange={(e) => setNewPassword(e.target.value)}
-          placeholder="Mật khẩu mới (tối thiểu 6 ký tự)"
+          placeholder={t("auth.reset.newPassword")}
           required
           minLength={6}
           autoComplete="new-password"
@@ -74,7 +76,7 @@ export default function ResetPassword() {
         <PasswordField
           value={confirmPassword}
           onChange={(e) => setConfirmPassword(e.target.value)}
-          placeholder="Xác nhận mật khẩu mới"
+          placeholder={t("auth.reset.confirmPassword")}
           required
           minLength={6}
           autoComplete="new-password"
@@ -101,7 +103,7 @@ export default function ResetPassword() {
           className="w-full flex items-center justify-center gap-2 py-2.5 rounded-2xl bg-gradient-to-r from-brand-500 to-brand-600 hover:shadow-glow disabled:opacity-60 text-white text-sm font-medium transition-all"
         >
           {loading && <Loader2 size={16} className="animate-spin" />}
-          Đặt lại mật khẩu
+          {t("auth.reset.submit")}
         </motion.button>
       </form>
     </AuthLayout>

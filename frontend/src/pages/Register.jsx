@@ -6,6 +6,7 @@ import clsx from "clsx";
 import { useAuth } from "../context/AuthContext.jsx";
 import AuthLayout from "../components/AuthLayout.jsx";
 import PasswordField from "../components/PasswordField.jsx";
+import { useI18n } from "../i18n/I18nContext.jsx";
 
 function passwordScore(pw) {
   if (!pw) return 0;
@@ -17,7 +18,6 @@ function passwordScore(pw) {
   return score; // 0-4, purely a UI hint, never blocks submission
 }
 
-const STRENGTH_LABEL = ["Rất yếu", "Yếu", "Trung bình", "Khá", "Mạnh"];
 const STRENGTH_COLOR = ["bg-red-500", "bg-red-400", "bg-amber-400", "bg-ion-500", "bg-ion-500"];
 
 export default function Register() {
@@ -27,6 +27,7 @@ export default function Register() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const { register } = useAuth();
+  const { t, errorMessage } = useI18n();
   const navigate = useNavigate();
 
   const score = passwordScore(password);
@@ -39,20 +40,20 @@ export default function Register() {
       await register(username, email, password);
       navigate("/chat");
     } catch (err) {
-      setError(err.response?.data?.error?.message || "Đăng ký không thành công.");
+      setError(errorMessage(err, "auth.register.failed"));
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <AuthLayout title="Tạo tài khoản Chat AI" subtitle="Miễn phí, không cần thẻ tín dụng">
+    <AuthLayout title={t("auth.register.title")} subtitle={t("auth.register.subtitle")}>
       <form onSubmit={handleSubmit} className="space-y-3" noValidate>
         <input
           required
           minLength={3}
           autoComplete="username"
-          placeholder="Tên hiển thị"
+          placeholder={t("auth.register.username")}
           value={username}
           onChange={(e) => setUsername(e.target.value)}
           className="w-full px-4 py-2.5 rounded-2xl border border-edge-light dark:border-edge-dark bg-white/50 dark:bg-white/5 outline-none focus:border-brand-400 focus:shadow-glow text-sm transition-all"
@@ -61,7 +62,7 @@ export default function Register() {
           type="email"
           required
           autoComplete="email"
-          placeholder="Email"
+          placeholder={t("auth.register.email")}
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           className="w-full px-4 py-2.5 rounded-2xl border border-edge-light dark:border-edge-dark bg-white/50 dark:bg-white/5 outline-none focus:border-brand-400 focus:shadow-glow text-sm transition-all"
@@ -71,7 +72,7 @@ export default function Register() {
           <PasswordField
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            placeholder="Mật khẩu (tối thiểu 6 ký tự)"
+            placeholder={t("auth.register.password")}
             required
             minLength={6}
             autoComplete="new-password"
@@ -89,7 +90,7 @@ export default function Register() {
                   />
                 ))}
               </div>
-              <span className="text-[11px] opacity-50 w-16 text-right shrink-0">{STRENGTH_LABEL[score]}</span>
+              <span className="text-[11px] opacity-50 w-16 text-end shrink-0">{t(`auth.register.strength${score}`)}</span>
             </div>
           )}
         </div>
@@ -115,7 +116,7 @@ export default function Register() {
           className="w-full flex items-center justify-center gap-2 py-2.5 rounded-2xl bg-gradient-to-r from-brand-500 to-brand-600 hover:shadow-glow disabled:opacity-60 text-white text-sm font-medium transition-all"
         >
           {loading && <Loader2 size={16} className="animate-spin" />}
-          Đăng ký
+          {t("auth.register.submit")}
         </motion.button>
       </form>
     </AuthLayout>

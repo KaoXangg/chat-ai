@@ -9,6 +9,7 @@ import { authMiddleware } from "../middleware/auth.js";
 import { chatLimiter } from "../middleware/rateLimit.js";
 import { streamWithFallback, generateConversationTitle, AI_ERROR_CODES } from "../providers/aiRouter.js";
 import { searchWeb, isWebSearchConfigured } from "../providers/webSearch.js";
+import { aiLanguageDirective } from "../utils/languages.js";
 
 const router = express.Router();
 router.use(authMiddleware);
@@ -51,7 +52,7 @@ function normalizeImages(image, images) {
   return [];
 }
 
-async function buildHistory(conversationId, extraContext = "") {
+async function buildHistory(conversationId, extraContext = "", aiLanguage = "auto") {
   const history = await Message.findAll({
     where: { conversationId },
     order: [["createdAt", "DESC"]],
@@ -59,7 +60,8 @@ async function buildHistory(conversationId, extraContext = "") {
   });
   history.reverse();
 
-  const systemContent = extraContext ? `${SYSTEM_PROMPT}\n\n${extraContext}` : SYSTEM_PROMPT;
+  // Ngôn ngữ trả lời do người dùng chọn (Users.aiLanguage); "auto" thì AI tự theo ngôn ngữ tin nhắn.
+  const systemContent = [SYSTEM_PROMPT, aiLanguageDirective(aiLanguage), extraContext].filter(Boolean).join("\n\n");
 
   return [
     { role: "system", content: systemContent },
@@ -225,7 +227,7 @@ router.post("/:conversationId/stream", chatLimiter, async (req, res, next) => {
     }
 
     const { webSources, webContext } = await getWebContext(useWebSearch, content.trim());
-    const messagesForAI = await buildHistory(conversation.id, webContext);
+    const messagesForAI = await buildHistory(conversation.id, webContext, req.user.aiLanguage);
     await runStream(req, res, conversation, messagesForAI, { webSources, userMessageId: userMessage.id });
   } catch (err) {
     next(err);
@@ -244,7 +246,7 @@ router.post("/:conversationId/regenerate", chatLimiter, async (req, res, next) =
       await lastMessage.destroy();
     }
 
-    const messagesForAI = await buildHistory(conversation.id);
+    const messagesForAI = await buildHistory(conversation.id, "", req.user.aiLanguage);
     await runStream(req, res, conversation, messagesForAI);
   } catch (err) {
     next(err);
@@ -286,7 +288,7 @@ router.post("/:conversationId/edit/:messageId", chatLimiter, async (req, res, ne
     });
 
     const { webSources, webContext } = await getWebContext(req.body.useWebSearch, content);
-    const messagesForAI = await buildHistory(conversation.id, webContext);
+    const messagesForAI = await buildHistory(conversation.id, webContext, req.user.aiLanguage);
     await runStream(req, res, conversation, messagesForAI, { webSources, userMessageId: target.id });
   } catch (err) {
     next(err);

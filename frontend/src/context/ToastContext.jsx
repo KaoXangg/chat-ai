@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useRef, useState } from "react"
 import { AnimatePresence, motion } from "framer-motion";
 import { CheckCircle2, AlertCircle, Info, XCircle, X } from "lucide-react";
 import clsx from "clsx";
+import { useI18n } from "../i18n/I18nContext.jsx";
 
 const ToastContext = createContext(null);
 
@@ -20,11 +21,12 @@ const TONE = {
 };
 
 export function ToastProvider({ children }) {
+  const { t } = useI18n();
   const [toasts, setToasts] = useState([]);
   const idRef = useRef(0);
 
   const dismiss = useCallback((id) => {
-    setToasts((prev) => prev.filter((t) => t.id !== id));
+    setToasts((prev) => prev.filter((item) => item.id !== id));
   }, []);
 
   const push = useCallback(
@@ -54,14 +56,14 @@ export function ToastProvider({ children }) {
       <div
         aria-live="polite"
         aria-atomic="true"
-        className="fixed z-[100] bottom-4 left-1/2 -translate-x-1/2 sm:left-auto sm:right-4 sm:translate-x-0 flex flex-col gap-2 w-[calc(100%-2rem)] max-w-sm pointer-events-none"
+        className="fixed z-[100] bottom-4 left-1/2 -translate-x-1/2 sm:left-auto sm:end-4 sm:translate-x-0 flex flex-col gap-2 w-[calc(100%-2rem)] max-w-sm pointer-events-none"
       >
         <AnimatePresence>
-          {toasts.map((t) => {
-            const Icon = ICONS[t.type] || Info;
+          {toasts.map((item) => {
+            const Icon = ICONS[item.type] || Info;
             return (
               <motion.div
-                key={t.id}
+                key={item.id}
                 layout
                 initial={{ opacity: 0, y: 16, scale: 0.95 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -70,14 +72,14 @@ export function ToastProvider({ children }) {
                 role="status"
                 className={clsx(
                   "pointer-events-auto flex items-start gap-2.5 px-4 py-3 rounded-2xl border glass shadow-soft backdrop-blur-xl",
-                  TONE[t.type]
+                  TONE[item.type]
                 )}
               >
                 <Icon size={18} className="shrink-0 mt-0.5" />
-                <p className="text-sm flex-1 text-black dark:text-white leading-snug">{t.message}</p>
+                <p className="text-sm flex-1 text-black dark:text-white leading-snug">{item.message}</p>
                 <button
-                  onClick={() => dismiss(t.id)}
-                  aria-label="Đóng thông báo"
+                  onClick={() => dismiss(item.id)}
+                  aria-label={t("toast.close")}
                   className="shrink-0 opacity-50 hover:opacity-100 transition-opacity"
                 >
                   <X size={14} />

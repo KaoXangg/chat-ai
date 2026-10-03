@@ -3,10 +3,11 @@ import { Search, ShieldBan, ShieldCheck, Trash2, ShieldPlus, ChevronLeft, Chevro
 import { AnimatePresence, motion } from "framer-motion";
 import api from "../../api/axios.js";
 import { TableRowSkeleton, CardRowSkeleton, Skeleton } from "../../components/Skeleton.jsx";
-import { useToast, apiErrorMessage } from "../../context/ToastContext.jsx";
+import { useToast } from "../../context/ToastContext.jsx";
 import { useConfirm } from "../../context/ConfirmContext.jsx";
 import { useModalA11y } from "../../hooks/useModalA11y.js";
 import Tooltip from "../../components/Tooltip.jsx";
+import { useI18n } from "../../i18n/I18nContext.jsx";
 
 const PAGE_SIZE = 10;
 
@@ -23,46 +24,48 @@ function RoleBadge({ role }) {
 }
 
 function StatusBadge({ status }) {
+  const { t } = useI18n();
   return (
     <span
       className={`px-2.5 py-0.5 rounded-full text-xs ${
         status === "banned" ? "bg-red-500/10 text-red-500" : "bg-ion-500/10 text-ion-600"
       }`}
     >
-      {status === "banned" ? "Bị khóa" : "Hoạt động"}
+      {status === "banned" ? t("admin.users.statusBanned") : t("admin.users.statusActive")}
     </span>
   );
 }
 
 function UserActions({ user, onToggleRole, onToggleBan, onRemove, stopPropagation = false }) {
+  const { t } = useI18n();
   const wrap = (fn) => (e) => {
     if (stopPropagation) e.stopPropagation();
     fn(user);
   };
   return (
     <div className="flex items-center gap-1 justify-end">
-      <Tooltip label="Đổi quyền quản trị viên" align="end">
+      <Tooltip label={t("admin.users.toggleRole")} align="end">
 <button
         onClick={wrap(onToggleRole)}
-        aria-label={`Đổi quyền quản trị viên cho ${user.username}`}
+        aria-label={t("admin.users.toggleRoleFor", { name: user.username })}
         className="p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/10"
       >
         <ShieldPlus size={15} className={user.role === "admin" ? "text-brand-500" : "opacity-50"} />
       </button>
 </Tooltip>
-      <Tooltip label={user.status === "banned" ? "Mở khóa" : "Khóa"} align="end">
+      <Tooltip label={user.status === "banned" ? t("admin.users.unban") : t("admin.users.ban")} align="end">
 <button
         onClick={wrap(onToggleBan)}
-        aria-label={user.status === "banned" ? `Mở khóa ${user.username}` : `Khóa ${user.username}`}
+        aria-label={user.status === "banned" ? t("admin.users.unbanFor", { name: user.username }) : t("admin.users.banFor", { name: user.username })}
         className="p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/10"
       >
         {user.status === "banned" ? <ShieldCheck size={15} className="text-ion-500" /> : <ShieldBan size={15} className="text-amber-500" />}
       </button>
 </Tooltip>
-      <Tooltip label="Xóa" align="end">
+      <Tooltip label={t("admin.users.remove")} align="end">
 <button
         onClick={wrap(onRemove)}
-        aria-label={`Xóa tài khoản ${user.username}`}
+        aria-label={t("admin.users.removeFor", { name: user.username })}
         className="p-1.5 rounded-lg hover:bg-red-500/10 text-red-500"
       >
         <Trash2 size={15} />
@@ -73,6 +76,7 @@ function UserActions({ user, onToggleRole, onToggleBan, onRemove, stopPropagatio
 }
 
 function UserDrawer({ userId, onClose, onToggleRole, onToggleBan, onRemove }) {
+  const { t, lang, errorMessage } = useI18n();
   const [detail, setDetail] = useState(null);
   const [loading, setLoading] = useState(true);
   const toast = useToast();
@@ -85,7 +89,7 @@ function UserDrawer({ userId, onClose, onToggleRole, onToggleBan, onRemove }) {
       .get(`/admin/users/${userId}`)
       .then((res) => setDetail(res.data.data))
       .catch((err) => {
-        toast.error(apiErrorMessage(err, "Không thể tải chi tiết người dùng."));
+        toast.error(errorMessage(err, "admin.users.err.detail"));
         onClose();
       })
       .finally(() => setLoading(false));
@@ -126,12 +130,12 @@ function UserDrawer({ userId, onClose, onToggleRole, onToggleBan, onRemove }) {
             transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
             role="dialog"
             aria-modal="true"
-            aria-label="Chi tiết người dùng"
+            aria-label={t("admin.users.detailTitle")}
             className="fixed inset-y-0 right-0 z-[101] w-full max-w-sm glass border-l border-edge-light dark:border-edge-dark shadow-soft flex flex-col"
           >
             <div className="flex items-center justify-between px-5 py-4 border-b border-edge-light dark:border-edge-dark">
-              <h2 className="font-display text-base font-semibold tracking-tight">Chi tiết người dùng</h2>
-              <button onClick={onClose} aria-label="Đóng" className="p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/10">
+              <h2 className="font-display text-base font-semibold tracking-tight">{t("admin.users.detailTitle")}</h2>
+              <button onClick={onClose} aria-label={t("common.close")} className="p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/10">
                 <X size={16} />
               </button>
             </div>
@@ -168,31 +172,31 @@ function UserDrawer({ userId, onClose, onToggleRole, onToggleBan, onRemove }) {
 
                   <div className="flex items-center gap-2 text-sm opacity-60">
                     <CalendarDays size={14} />
-                    Tham gia ngày {new Date(detail.user.createdAt).toLocaleDateString("vi-VN")}
+                    {t("admin.users.joined", { date: new Date(detail.user.createdAt).toLocaleDateString(lang) })}
                   </div>
 
                   <div className="grid grid-cols-2 gap-3">
                     <div className="rounded-2xl bg-black/5 dark:bg-white/5 p-3.5 text-center">
                       <MessagesSquare size={18} className="mx-auto mb-1.5 text-brand-500" />
                       <p className="text-lg font-display font-semibold">{detail.usage.conversationCount}</p>
-                      <p className="text-xs opacity-50">Cuộc trò chuyện</p>
+                      <p className="text-xs opacity-50">{t("admin.users.statConversations")}</p>
                     </div>
                     <div className="rounded-2xl bg-black/5 dark:bg-white/5 p-3.5 text-center">
                       <MessageSquare size={18} className="mx-auto mb-1.5 text-ion-500" />
                       <p className="text-lg font-display font-semibold">{detail.usage.messageCount}</p>
-                      <p className="text-xs opacity-50">Tin nhắn</p>
+                      <p className="text-xs opacity-50">{t("admin.users.statMessages")}</p>
                     </div>
                   </div>
 
                   <div className="pt-4 border-t border-edge-light dark:border-edge-dark">
-                    <p className="text-xs font-medium opacity-50 mb-2">Hành động</p>
+                    <p className="text-xs font-medium opacity-50 mb-2">{t("admin.users.actions")}</p>
                     <div className="flex flex-col gap-1.5">
                       <button
                         onClick={() => handleToggleRole(detail.user)}
                         className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
                       >
                         <ShieldPlus size={15} className={detail.user.role === "admin" ? "text-brand-500" : "opacity-50"} />
-                        {detail.user.role === "admin" ? "Hạ quyền xuống User" : "Nâng quyền lên Admin"}
+                        {detail.user.role === "admin" ? t("admin.users.demote") : t("admin.users.promote")}
                       </button>
                       <button
                         onClick={() => handleToggleBan(detail.user)}
@@ -203,7 +207,7 @@ function UserDrawer({ userId, onClose, onToggleRole, onToggleBan, onRemove }) {
                         ) : (
                           <ShieldBan size={15} className="text-amber-500" />
                         )}
-                        {detail.user.status === "banned" ? "Mở khóa tài khoản" : "Khóa tài khoản"}
+                        {detail.user.status === "banned" ? t("admin.users.unbanAccount") : t("admin.users.banAccount")}
                       </button>
                       <button
                         onClick={() => {
@@ -212,7 +216,7 @@ function UserDrawer({ userId, onClose, onToggleRole, onToggleBan, onRemove }) {
                         }}
                         className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm text-red-500 hover:bg-red-500/10 transition-colors"
                       >
-                        <Trash2 size={15} /> Xóa tài khoản
+                        <Trash2 size={15} /> {t("admin.users.deleteAccount")}
                       </button>
                     </div>
                   </div>
@@ -237,6 +241,7 @@ export default function AdminUsers() {
   const [selectedUserId, setSelectedUserId] = useState(null);
   const toast = useToast();
   const confirm = useConfirm();
+  const { t, lang, errorMessage } = useI18n();
 
   const load = useCallback(
     async (opts = {}) => {
@@ -254,7 +259,7 @@ export default function AdminUsers() {
         setUsers(res.data.data.users);
         setTotal(res.data.data.total);
       } catch (err) {
-        toast.error(apiErrorMessage(err, "Không thể tải danh sách người dùng."));
+        toast.error(errorMessage(err, "admin.users.err.load"));
       } finally {
         setLoading(false);
       }
@@ -279,10 +284,10 @@ export default function AdminUsers() {
     setUsers((prev) => prev.map((u) => (u._id === user._id ? { ...u, status } : u)));
     try {
       await api.patch(`/admin/users/${user._id}`, { status });
-      toast.success(status === "banned" ? `Đã khóa ${user.username}.` : `Đã mở khóa ${user.username}.`);
+      toast.success(status === "banned" ? t("admin.users.banned", { name: user.username }) : t("admin.users.unbanned", { name: user.username }));
     } catch (err) {
       setUsers((prev) => prev.map((u) => (u._id === user._id ? { ...u, status: user.status } : u)));
-      toast.error(apiErrorMessage(err, "Không thể cập nhật trạng thái người dùng."));
+      toast.error(errorMessage(err, "admin.users.err.status"));
     }
   };
 
@@ -291,28 +296,28 @@ export default function AdminUsers() {
     setUsers((prev) => prev.map((u) => (u._id === user._id ? { ...u, role } : u)));
     try {
       await api.patch(`/admin/users/${user._id}`, { role });
-      toast.success(`Đã đổi quyền của ${user.username} thành ${role}.`);
+      toast.success(t("admin.users.roleChanged", { name: user.username, role }));
     } catch (err) {
       setUsers((prev) => prev.map((u) => (u._id === user._id ? { ...u, role: user.role } : u)));
-      toast.error(apiErrorMessage(err, "Không thể đổi quyền người dùng."));
+      toast.error(errorMessage(err, "admin.users.err.role"));
     }
   };
 
   const remove = async (user) => {
     const ok = await confirm({
-      title: "Xóa tài khoản?",
-      message: `Xóa vĩnh viễn tài khoản "${user.username}"? Toàn bộ lịch sử trò chuyện của người này sẽ bị xóa và không thể khôi phục.`,
-      confirmLabel: "Xóa vĩnh viễn",
+      title: t("admin.users.deleteTitle"),
+      message: t("admin.users.deleteMessage", { name: user.username }),
+      confirmLabel: t("admin.users.deleteOk"),
       danger: true,
     });
     if (!ok) return;
     try {
       await api.delete(`/admin/users/${user._id}`);
       setUsers((prev) => prev.filter((u) => u._id !== user._id));
-      setTotal((t) => Math.max(0, t - 1));
-      toast.success(`Đã xóa tài khoản ${user.username}.`);
+      setTotal((n) => Math.max(0, n - 1));
+      toast.success(t("admin.users.removed", { name: user.username }));
     } catch (err) {
-      toast.error(apiErrorMessage(err, "Không thể xóa tài khoản."));
+      toast.error(errorMessage(err, "admin.users.err.delete"));
     }
   };
 
@@ -321,21 +326,21 @@ export default function AdminUsers() {
   return (
     <div className="max-w-5xl space-y-4">
       <div>
-        <h1 className="font-display text-xl font-semibold tracking-tight">Quản lý người dùng</h1>
-        <p className="text-sm opacity-50">Xem, khóa/mở khóa, đổi quyền hoặc xóa tài khoản</p>
+        <h1 className="font-display text-xl font-semibold tracking-tight">{t("admin.users.title")}</h1>
+        <p className="text-sm opacity-50">{t("admin.users.subtitle")}</p>
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
         <div className="flex items-center gap-2 px-3 py-2 rounded-2xl glass border border-edge-light dark:border-edge-dark w-full max-w-sm">
           <Search size={15} className="opacity-50" />
           <label htmlFor="user-search" className="sr-only">
-            Tìm kiếm người dùng
+            {t("admin.users.searchLabel")}
           </label>
           <input
             id="user-search"
             value={search}
             onChange={(e) => handleSearchChange(e.target.value)}
-            placeholder="Tìm theo tên hoặc email..."
+            placeholder={t("admin.users.searchPlaceholder")}
             className="bg-transparent outline-none text-sm flex-1"
           />
         </div>
@@ -348,7 +353,7 @@ export default function AdminUsers() {
           }}
           className="px-3 py-2 rounded-2xl glass border border-edge-light dark:border-edge-dark text-sm outline-none"
         >
-          <option value="">Tất cả vai trò</option>
+          <option value="">{t("admin.users.allRoles")}</option>
           <option value="admin">Admin</option>
           <option value="user">User</option>
         </select>
@@ -361,12 +366,12 @@ export default function AdminUsers() {
           }}
           className="px-3 py-2 rounded-2xl glass border border-edge-light dark:border-edge-dark text-sm outline-none"
         >
-          <option value="">Tất cả trạng thái</option>
-          <option value="active">Hoạt động</option>
-          <option value="banned">Bị khóa</option>
+          <option value="">{t("admin.users.allStatuses")}</option>
+          <option value="active">{t("admin.users.statusActive")}</option>
+          <option value="banned">{t("admin.users.statusBanned")}</option>
         </select>
 
-        <span className="text-xs opacity-50 ml-auto">{total} người dùng</span>
+        <span className="text-xs opacity-50 ms-auto">{t("admin.users.count", { n: total })}</span>
       </div>
 
       {/* Mobile: card list */}
@@ -388,28 +393,28 @@ export default function AdminUsers() {
               </div>
               <div className="flex items-center justify-between">
                 <StatusBadge status={u.status} />
-                <span className="text-xs opacity-50">{new Date(u.createdAt).toLocaleDateString("vi-VN")}</span>
+                <span className="text-xs opacity-50">{new Date(u.createdAt).toLocaleDateString(lang)}</span>
               </div>
               <div className="pt-1 border-t border-edge-light dark:border-edge-dark flex justify-end">
                 <UserActions user={u} onToggleRole={toggleRole} onToggleBan={toggleBan} onRemove={remove} stopPropagation />
               </div>
             </div>
           ))}
-        {!loading && users.length === 0 && <p className="text-center text-sm opacity-40 py-8">Không tìm thấy người dùng nào</p>}
+        {!loading && users.length === 0 && <p className="text-center text-sm opacity-40 py-8">{t("admin.users.empty")}</p>}
       </div>
 
       {/* Desktop / tablet: table */}
       <div className="hidden sm:block rounded-2xl glass border border-edge-light dark:border-edge-dark overflow-hidden shadow-soft">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="bg-black/5 dark:bg-white/5 text-left">
+            <thead className="bg-black/5 dark:bg-white/5 text-start">
               <tr>
-                <th className="px-4 py-3 font-medium">Người dùng</th>
-                <th className="px-4 py-3 font-medium">Email</th>
-                <th className="px-4 py-3 font-medium">Vai trò</th>
-                <th className="px-4 py-3 font-medium">Trạng thái</th>
-                <th className="px-4 py-3 font-medium">Ngày tạo</th>
-                <th className="px-4 py-3 font-medium text-right">Hành động</th>
+                <th className="px-4 py-3 font-medium">{t("admin.users.colUser")}</th>
+                <th className="px-4 py-3 font-medium">{t("admin.users.colEmail")}</th>
+                <th className="px-4 py-3 font-medium">{t("admin.users.colRole")}</th>
+                <th className="px-4 py-3 font-medium">{t("admin.users.colStatus")}</th>
+                <th className="px-4 py-3 font-medium">{t("admin.users.colCreated")}</th>
+                <th className="px-4 py-3 font-medium text-end">{t("admin.users.colActions")}</th>
               </tr>
             </thead>
             <tbody>
@@ -429,7 +434,7 @@ export default function AdminUsers() {
                     <td className="px-4 py-3">
                       <StatusBadge status={u.status} />
                     </td>
-                    <td className="px-4 py-3 opacity-50">{new Date(u.createdAt).toLocaleDateString("vi-VN")}</td>
+                    <td className="px-4 py-3 opacity-50">{new Date(u.createdAt).toLocaleDateString(lang)}</td>
                     <td className="px-4 py-3">
                       <UserActions user={u} onToggleRole={toggleRole} onToggleBan={toggleBan} onRemove={remove} stopPropagation />
                     </td>
@@ -438,7 +443,7 @@ export default function AdminUsers() {
             </tbody>
           </table>
         </div>
-        {!loading && users.length === 0 && <p className="text-center text-sm opacity-40 py-8">Không tìm thấy người dùng nào</p>}
+        {!loading && users.length === 0 && <p className="text-center text-sm opacity-40 py-8">{t("admin.users.empty")}</p>}
       </div>
 
       {totalPages > 1 && (
@@ -446,18 +451,18 @@ export default function AdminUsers() {
           <button
             onClick={() => setPage((p) => Math.max(1, p - 1))}
             disabled={page <= 1}
-            aria-label="Trang trước"
+            aria-label={t("admin.page.prev")}
             className="p-2 rounded-xl glass border border-edge-light dark:border-edge-dark disabled:opacity-30"
           >
             <ChevronLeft size={16} />
           </button>
           <span className="text-sm opacity-60">
-            Trang {page} / {totalPages}
+            {t("admin.page.of", { page, total: totalPages })}
           </span>
           <button
             onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
             disabled={page >= totalPages}
-            aria-label="Trang sau"
+            aria-label={t("admin.page.next")}
             className="p-2 rounded-xl glass border border-edge-light dark:border-edge-dark disabled:opacity-30"
           >
             <ChevronRight size={16} />

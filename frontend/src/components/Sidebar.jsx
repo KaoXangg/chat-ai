@@ -9,7 +9,12 @@ import { useNavigate } from "react-router-dom";
 import BrandMark from "./BrandMark.jsx";
 import Tooltip from "./Tooltip.jsx";
 import UserAvatar from "./UserAvatar.jsx";
-import { useToast, apiErrorMessage } from "../context/ToastContext.jsx";
+import { useToast } from "../context/ToastContext.jsx";
+import { useI18n } from "../i18n/I18nContext.jsx";
+
+// Tiêu đề mặc định do server tạo (có/không dấu) -> hiển thị theo ngôn ngữ giao diện.
+const DEFAULT_TITLES = new Set(["Cuoc tro chuyen moi", "Cuộc trò chuyện mới"]);
+const isDefaultTitle = (title) => DEFAULT_TITLES.has(title);
 
 function groupByDate(conversations) {
   const pinned = conversations.filter((c) => c.pinned);
@@ -32,15 +37,16 @@ function groupByDate(conversations) {
   }
 
   const groups = [];
-  if (pinned.length) groups.push({ label: "Đã ghim", items: pinned });
-  if (buckets.today.length) groups.push({ label: "Hôm nay", items: buckets.today });
-  if (buckets.yesterday.length) groups.push({ label: "Hôm qua", items: buckets.yesterday });
-  if (buckets.last7.length) groups.push({ label: "7 ngày qua", items: buckets.last7 });
-  if (buckets.older.length) groups.push({ label: "Cũ hơn", items: buckets.older });
+  if (pinned.length) groups.push({ key: "sidebar.pinned", items: pinned });
+  if (buckets.today.length) groups.push({ key: "sidebar.today", items: buckets.today });
+  if (buckets.yesterday.length) groups.push({ key: "sidebar.yesterday", items: buckets.yesterday });
+  if (buckets.last7.length) groups.push({ key: "sidebar.last7", items: buckets.last7 });
+  if (buckets.older.length) groups.push({ key: "sidebar.older", items: buckets.older });
   return groups;
 }
 
 function ConversationRow({ conv, isActive, isEditing, editValue, onEditValueChange, onSelect, onStartEdit, onCommitEdit, onPin, onDelete }) {
+  const { t } = useI18n();
   return (
     <motion.div
       layout
@@ -50,7 +56,7 @@ function ConversationRow({ conv, isActive, isEditing, editValue, onEditValueChan
       transition={{ duration: 0.18 }}
       onClick={onSelect}
       className={clsx(
-        "group relative flex items-center gap-2 pl-3.5 pr-2 py-2.5 rounded-xl cursor-pointer text-sm transition-colors overflow-hidden",
+        "group relative flex items-center gap-2 ps-3.5 pe-2 py-2.5 rounded-xl cursor-pointer text-sm transition-colors overflow-hidden",
         isActive ? "bg-brand-500/10 text-brand-700 dark:text-brand-200" : "hover:bg-black/5 dark:hover:bg-white/5"
       )}
     >
@@ -61,7 +67,7 @@ function ConversationRow({ conv, isActive, isEditing, editValue, onEditValueChan
       {isEditing ? (
         <input
           autoFocus
-          aria-label="Đổi tên cuộc trò chuyện"
+          aria-label={t("sidebar.rename")}
           value={editValue}
           onChange={(e) => onEditValueChange(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && onCommitEdit()}
@@ -69,7 +75,7 @@ function ConversationRow({ conv, isActive, isEditing, editValue, onEditValueChan
           className="flex-1 bg-transparent outline-none border-b border-brand-400"
         />
       ) : (
-        <span className="flex-1 truncate">{conv.title === "Cuoc tro chuyen moi" ? "Cuộc trò chuyện mới" : conv.title}</span>
+        <span className="flex-1 truncate">{isDefaultTitle(conv.title) ? t("sidebar.newChat") : conv.title}</span>
       )}
 
       {isEditing ? (
@@ -78,7 +84,7 @@ function ConversationRow({ conv, isActive, isEditing, editValue, onEditValueChan
             e.stopPropagation();
             onCommitEdit();
           }}
-          aria-label="Lưu tên cuộc trò chuyện"
+          aria-label={t("sidebar.saveName")}
           className="p-1 rounded hover:bg-black/10 dark:hover:bg-white/10"
         >
           <Check size={13} />
@@ -90,7 +96,7 @@ function ConversationRow({ conv, isActive, isEditing, editValue, onEditValueChan
               e.stopPropagation();
               onPin();
             }}
-            aria-label={conv.pinned ? "Bỏ ghim cuộc trò chuyện" : "Ghim cuộc trò chuyện"}
+            aria-label={conv.pinned ? t("sidebar.unpin") : t("sidebar.pin")}
             className="p-1 rounded hover:bg-black/10 dark:hover:bg-white/10"
           >
             <Pin size={13} />
@@ -100,7 +106,7 @@ function ConversationRow({ conv, isActive, isEditing, editValue, onEditValueChan
               e.stopPropagation();
               onStartEdit();
             }}
-            aria-label="Đổi tên cuộc trò chuyện"
+            aria-label={t("sidebar.rename")}
             className="p-1 rounded hover:bg-black/10 dark:hover:bg-white/10"
           >
             <Pencil size={13} />
@@ -110,7 +116,7 @@ function ConversationRow({ conv, isActive, isEditing, editValue, onEditValueChan
               e.stopPropagation();
               onDelete();
             }}
-            aria-label="Xóa cuộc trò chuyện"
+            aria-label={t("sidebar.delete")}
             className="p-1 rounded hover:bg-red-500/10 text-red-500"
           >
             <Trash2 size={13} />
@@ -132,10 +138,9 @@ function RailButton({ label, shortcut, onClick, className, wrapperClassName, chi
   );
 }
 
-const displayTitle = (title) => (title === "Cuoc tro chuyen moi" ? "Cuộc trò chuyện mới" : title);
-
 /** Popover nổi bên cạnh thanh icon: danh sách chat đã ghim / gần đây. Render qua portal để không bị aside cắt (overflow-hidden). */
 function RailFlyout({ flyout, conversations, activeId, onPick, onShowAll, onEnter, onLeave }) {
+  const { t } = useI18n();
   if (typeof document === "undefined") return null;
   const isPinned = flyout?.type === "pinned";
   const items = !flyout
@@ -153,7 +158,7 @@ function RailFlyout({ flyout, conversations, activeId, onPick, onShowAll, onEnte
           key={flyout.type}
           data-flyout
           role="menu"
-          aria-label={isPinned ? "Cuộc trò chuyện đã ghim" : "Cuộc trò chuyện gần đây"}
+          aria-label={isPinned ? t("sidebar.flyoutPinned") : t("sidebar.flyoutRecent")}
           initial={{ opacity: 0, x: -6, scale: 0.98 }}
           animate={{ opacity: 1, x: 0, scale: 1 }}
           exit={{ opacity: 0, x: -4, scale: 0.98 }}
@@ -168,12 +173,12 @@ function RailFlyout({ flyout, conversations, activeId, onPick, onShowAll, onEnte
           }}
           className="fixed z-50 w-64 flex flex-col rounded-2xl p-1.5 bg-white/90 dark:bg-neutral-900/90 backdrop-blur-xl border border-black/5 dark:border-white/10 shadow-[0_12px_40px_-8px_rgba(0,0,0,0.28)] text-black dark:text-white"
         >
-          <p className="px-2.5 pt-1.5 pb-1 text-xs font-medium opacity-50">{isPinned ? "Đã ghim" : "Gần đây"}</p>
+          <p className="px-2.5 pt-1.5 pb-1 text-xs font-medium opacity-50">{isPinned ? t("sidebar.pinned") : t("sidebar.recent")}</p>
 
           {items.length === 0 ? (
             <div className="px-3 py-5 text-center text-xs opacity-50">
               {isPinned ? <Pin size={16} className="mx-auto mb-2" /> : <MessageSquare size={16} className="mx-auto mb-2" />}
-              {isPinned ? "Chưa có cuộc trò chuyện nào được ghim." : "Chưa có cuộc trò chuyện nào."}
+              {isPinned ? t("sidebar.emptyPinned") : t("sidebar.emptyRecent")}
             </div>
           ) : (
             <div className="overflow-y-auto min-h-0 space-y-0.5">
@@ -183,14 +188,14 @@ function RailFlyout({ flyout, conversations, activeId, onPick, onShowAll, onEnte
                   role="menuitem"
                   onClick={() => onPick(c._id)}
                   className={clsx(
-                    "w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-sm text-left transition-colors",
+                    "w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-sm text-start transition-colors",
                     c._id === activeId
                       ? "bg-brand-500/10 text-brand-700 dark:text-brand-200"
                       : "hover:bg-black/5 dark:hover:bg-white/10"
                   )}
                 >
                   <MessageSquare size={15} className="shrink-0 opacity-60" />
-                  <span className="truncate">{displayTitle(c.title)}</span>
+                  <span className="truncate">{isDefaultTitle(c.title) ? t("sidebar.newChat") : c.title}</span>
                 </button>
               ))}
             </div>
@@ -199,9 +204,9 @@ function RailFlyout({ flyout, conversations, activeId, onPick, onShowAll, onEnte
           {!isPinned && items.length > 0 && (
             <button
               onClick={onShowAll}
-              className="mt-1 w-full px-2.5 py-2 rounded-xl text-xs text-left opacity-60 hover:opacity-100 hover:bg-black/5 dark:hover:bg-white/10 transition"
+              className="mt-1 w-full px-2.5 py-2 rounded-xl text-xs text-start opacity-60 hover:opacity-100 hover:bg-black/5 dark:hover:bg-white/10 transition"
             >
-              Xem tất cả
+              {t("sidebar.viewAll")}
             </button>
           )}
         </motion.div>
@@ -228,6 +233,7 @@ export default function Sidebar({
 }) {
   const { theme, toggleTheme } = useTheme();
   const { user, logout, randomizeAvatar } = useAuth();
+  const { t, errorMessage } = useI18n();
   const toast = useToast();
   const navigate = useNavigate();
   const [avatarBusy, setAvatarBusy] = useState(false);
@@ -273,7 +279,7 @@ export default function Sidebar({
 
   const startEdit = (conv) => {
     setEditingId(conv._id);
-    setEditValue(conv.title);
+    setEditValue(isDefaultTitle(conv.title) ? t("sidebar.newChat") : conv.title);
   };
 
   const commitEdit = () => {
@@ -287,9 +293,9 @@ export default function Sidebar({
     setAvatarBusy(true);
     try {
       await randomizeAvatar();
-      toast.success("Đã đổi avatar hoạt hình mới!");
+      toast.success(t("sidebar.avatarChanged"));
     } catch (err) {
-      toast.error(apiErrorMessage(err, "Không thể đổi avatar."));
+      toast.error(errorMessage(err, "sidebar.avatarFailed"));
     } finally {
       setAvatarBusy(false);
     }
@@ -329,15 +335,15 @@ export default function Sidebar({
           </div>
           <button
             onClick={onCloseMobile}
-            aria-label="Đóng danh sách cuộc trò chuyện"
+            aria-label={t("sidebar.closeList")}
             className="md:hidden p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
           >
             <X size={18} />
           </button>
-          <Tooltip label="Thu gọn thanh bên" className="hidden md:inline-flex">
+          <Tooltip label={t("sidebar.collapse")} className="hidden md:inline-flex">
 <button
             onClick={onCollapse}
-            aria-label="Thu gọn thanh bên"
+            aria-label={t("sidebar.collapse")}
             className="p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
           >
             <PanelLeftClose size={18} />
@@ -347,13 +353,13 @@ export default function Sidebar({
 
         <div className="px-3">
           
-          <Tooltip label="Cuộc trò chuyện mới" shortcut="Ctrl+Shift+O" className="flex w-full">
+          <Tooltip label={t("sidebar.newChat")} shortcut="Ctrl+Shift+O" className="flex w-full">
 <motion.button
             whileTap={{ scale: 0.97 }}
             onClick={onNew}
             className="w-full flex items-center gap-2 justify-center px-3 py-2.5 rounded-2xl bg-gradient-to-r from-brand-500 to-brand-600 hover:shadow-glow text-white text-sm font-medium transition-shadow"
           >
-            <Plus size={16} /> Cuộc trò chuyện mới
+            <Plus size={16} /> {t("sidebar.newChat")}
           </motion.button>
 </Tooltip>
         </div>
@@ -362,12 +368,12 @@ export default function Sidebar({
           <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-black/5 dark:bg-white/5 border border-transparent focus-within:border-brand-400/60 transition-colors">
             <Search size={14} className="opacity-50" />
             <label htmlFor="sidebar-search" className="sr-only">
-              Tìm kiếm lịch sử chat
+              {t("sidebar.searchLabel")}
             </label>
             <input
               id="sidebar-search"
               onChange={(e) => onSearch(e.target.value)}
-              placeholder="Tìm kiếm lịch sử chat..."
+              placeholder={t("sidebar.searchPlaceholder")}
               className="bg-transparent outline-none text-sm flex-1 placeholder:text-black/40 dark:placeholder:text-white/40"
             />
           </div>
@@ -375,8 +381,8 @@ export default function Sidebar({
 
         <div className="flex-1 overflow-y-auto mt-3 px-2 space-y-3">
           {groups.map((group) => (
-            <div key={group.label}>
-              <p className="px-3 mb-1 text-[11px] font-semibold uppercase tracking-wide opacity-40">{group.label}</p>
+            <div key={group.key}>
+              <p className="px-3 mb-1 text-[11px] font-semibold uppercase tracking-wide opacity-40">{t(group.key)}</p>
               <div className="space-y-1">
                 <AnimatePresence initial={false}>
                   {group.items.map((conv) => (
@@ -398,7 +404,7 @@ export default function Sidebar({
               </div>
             </div>
           ))}
-          {conversations.length === 0 && <p className="text-center text-xs opacity-40 py-6">Chưa có cuộc trò chuyện nào</p>}
+          {conversations.length === 0 && <p className="text-center text-xs opacity-40 py-6">{t("sidebar.empty")}</p>}
         </div>
 
         <div className="p-3 border-t border-edge-light dark:border-edge-dark space-y-1">
@@ -407,21 +413,21 @@ export default function Sidebar({
               onClick={() => navigate("/admin")}
               className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-sm hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
             >
-              <ShieldCheck size={16} className="text-brand-500" /> Bảng quản trị
+              <ShieldCheck size={16} className="text-brand-500" /> {t("sidebar.admin")}
             </button>
           )}
           <button
             onClick={toggleTheme}
-            aria-label={theme === "dark" ? "Chuyển sang giao diện sáng" : "Chuyển sang giao diện tối"}
+            aria-label={theme === "dark" ? t("sidebar.toLight") : t("sidebar.toDark")}
             className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-sm hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
           >
             {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
-            {theme === "dark" ? "Giao diện sáng" : "Giao diện tối"}
+            {theme === "dark" ? t("sidebar.lightMode") : t("sidebar.darkMode")}
           </button>
           <div className="flex items-center gap-2 px-3 py-2">
-            <Tooltip label="Bấm avatar để đổi hình hoạt hình ngẫu nhiên" side="top" align="start">
+            <Tooltip label={t("sidebar.avatarTip")} side="top" align="start">
               <span className="relative inline-flex">
-                <UserAvatar user={user} size={32} onClick={handleRandomAvatar} title="Đổi avatar ngẫu nhiên" />
+                <UserAvatar user={user} size={32} onClick={handleRandomAvatar} title={t("sidebar.avatarRandom")} />
                 {avatarBusy && (
                   <span className="absolute inset-0 rounded-full bg-black/40 flex items-center justify-center">
                     <Loader2 size={14} className="text-white animate-spin" />
@@ -430,18 +436,18 @@ export default function Sidebar({
               </span>
             </Tooltip>
             <span className="text-sm truncate flex-1">{user?.username}</span>
-            <Tooltip label="Đổi avatar ngẫu nhiên" side="top">
+            <Tooltip label={t("sidebar.avatarRandom")} side="top">
               <button
                 onClick={handleRandomAvatar}
                 disabled={avatarBusy}
-                aria-label="Đổi avatar ngẫu nhiên"
+                aria-label={t("sidebar.avatarRandom")}
                 className="p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/10 disabled:opacity-40 transition-colors"
               >
                 {avatarBusy ? <Loader2 size={15} className="animate-spin" /> : <Dices size={15} />}
               </button>
             </Tooltip>
-            <Tooltip label="Đăng xuất" side="top">
-<button onClick={logout} aria-label="Đăng xuất" className="p-1.5 rounded-lg hover:bg-red-500/10 text-red-500 transition-colors">
+            <Tooltip label={t("sidebar.logout")} side="top">
+<button onClick={logout} aria-label={t("sidebar.logout")} className="p-1.5 rounded-lg hover:bg-red-500/10 text-red-500 transition-colors">
               <LogOut size={15} />
             </button>
 </Tooltip>
@@ -458,7 +464,7 @@ export default function Sidebar({
           )}
         >
           <RailButton
-            label="Mở thanh bên"
+            label={t("sidebar.expand")}
             onClick={onExpand}
             className="group relative w-10 h-10 rounded-xl flex items-center justify-center hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
           >
@@ -466,7 +472,7 @@ export default function Sidebar({
             <PanelLeftOpen size={18} className="absolute opacity-0 group-hover:opacity-100 transition-opacity" />
           </RailButton>
           <RailButton
-            label="Cuộc trò chuyện mới"
+            label={t("sidebar.newChat")}
             shortcut="Ctrl+Shift+O"
             wrapperClassName="mt-2"
             onClick={(e) => {
@@ -478,7 +484,7 @@ export default function Sidebar({
             <SquarePen size={18} />
           </RailButton>
           <RailButton
-            label="Tìm kiếm"
+            label={t("sidebar.search")}
             shortcut="Ctrl+K"
             onClick={(e) => {
               e.stopPropagation();
@@ -497,7 +503,7 @@ export default function Sidebar({
               e.stopPropagation();
               openFlyout("pinned", e.currentTarget);
             }}
-            aria-label="Cuộc trò chuyện đã ghim"
+            aria-label={t("sidebar.flyoutPinned")}
             aria-haspopup="menu"
             className={clsx(
               "w-10 h-10 rounded-xl flex items-center justify-center hover:bg-black/5 dark:hover:bg-white/10 transition-colors",
@@ -514,7 +520,7 @@ export default function Sidebar({
               e.stopPropagation();
               openFlyout("recent", e.currentTarget);
             }}
-            aria-label="Cuộc trò chuyện gần đây"
+            aria-label={t("sidebar.flyoutRecent")}
             aria-haspopup="menu"
             className={clsx(
               "w-10 h-10 rounded-xl flex items-center justify-center hover:bg-black/5 dark:hover:bg-white/10 transition-colors",
@@ -524,7 +530,7 @@ export default function Sidebar({
             <MessageSquare size={18} />
           </button>
 
-          <Tooltip label={user?.username ? `${user.username} — bấm để đổi avatar` : "Tài khoản"} side="right" className="mt-auto inline-flex">
+          <Tooltip label={user?.username ? t("sidebar.accountTip", { name: user.username }) : t("sidebar.account")} side="right" className="mt-auto inline-flex">
             <span className="relative inline-flex">
               <UserAvatar
                 user={user}
@@ -533,7 +539,7 @@ export default function Sidebar({
                   e.stopPropagation();
                   handleRandomAvatar(e);
                 }}
-                title="Đổi avatar ngẫu nhiên"
+                title={t("sidebar.avatarRandom")}
               />
               {avatarBusy && (
                 <span className="absolute inset-0 rounded-full bg-black/40 flex items-center justify-center pointer-events-none">

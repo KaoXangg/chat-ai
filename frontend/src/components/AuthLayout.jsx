@@ -2,21 +2,24 @@ import { motion } from "framer-motion";
 import { Link, useLocation } from "react-router-dom";
 import { Sparkles, ShieldCheck, Zap } from "lucide-react";
 import BrandMark from "./BrandMark.jsx";
+import LanguageSwitcher from "./LanguageSwitcher.jsx";
+import { useI18n } from "../i18n/I18nContext.jsx";
 
 const PERKS = [
-  { icon: Sparkles, text: "Nhiều mô hình AI: Gemini, Groq, OpenRouter" },
-  { icon: Zap, text: "Phản hồi theo thời gian thực (streaming)" },
-  { icon: ShieldCheck, text: "Dữ liệu trò chuyện được bảo mật riêng tư" },
+  { icon: Sparkles, key: "auth.layout.perk1" },
+  { icon: Zap, key: "auth.layout.perk2" },
+  { icon: ShieldCheck, key: "auth.layout.perk3" },
 ];
 
 const TABS = [
-  { to: "/login", label: "Đăng nhập" },
-  { to: "/register", label: "Đăng ký" },
+  { to: "/login", key: "auth.layout.tabLogin" },
+  { to: "/register", key: "auth.layout.tabRegister" },
 ];
 
 function AuthTabs() {
   const location = useLocation();
-  if (!TABS.some((t) => t.to === location.pathname)) return null;
+  const { t } = useI18n();
+  if (!TABS.some((tab) => tab.to === location.pathname)) return null;
 
   return (
     <div className="relative flex items-center p-1 rounded-2xl bg-black/5 dark:bg-white/5 mb-7">
@@ -31,7 +34,7 @@ function AuthTabs() {
                 className="absolute inset-0 rounded-xl bg-white dark:bg-white/10 shadow-soft -z-10"
               />
             )}
-            <span className={active ? "text-black dark:text-white" : "opacity-50"}>{tab.label}</span>
+            <span className={active ? "text-black dark:text-white" : "opacity-50"}>{t(tab.key)}</span>
           </Link>
         );
       })}
@@ -46,6 +49,7 @@ function AuthTabs() {
  * Purely presentational — carries no auth logic.
  */
 export default function AuthLayout({ title, subtitle, children, footer }) {
+  const { t } = useI18n();
   return (
     <div className="h-screen w-full flex bg-surface-light dark:bg-surface-dark text-black dark:text-white relative overflow-hidden">
       <div className="aurora-bg" />
@@ -64,16 +68,16 @@ export default function AuthLayout({ title, subtitle, children, footer }) {
             transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
             className="font-display text-3xl font-semibold tracking-tight leading-snug max-w-sm"
           >
-            Trợ lý AI của riêng bạn, mọi lúc mọi nơi.
+            {t("auth.layout.headline")}
           </motion.h2>
           <p className="text-sm opacity-50 mt-3 max-w-sm">
-            Trò chuyện, tìm kiếm và sáng tạo nhanh hơn với nhiều mô hình AI hàng đầu trong một giao diện duy nhất.
+            {t("auth.layout.tagline")}
           </p>
 
           <div className="mt-8 space-y-3">
-            {PERKS.map(({ icon: Icon, text }, i) => (
+            {PERKS.map(({ icon: Icon, key }, i) => (
               <motion.div
-                key={text}
+                key={key}
                 initial={{ opacity: 0, x: -8 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ duration: 0.4, delay: 0.1 + i * 0.08, ease: [0.16, 1, 0.3, 1] }}
@@ -82,17 +86,21 @@ export default function AuthLayout({ title, subtitle, children, footer }) {
                 <span className="w-8 h-8 rounded-xl bg-brand-500/10 text-brand-500 flex items-center justify-center shrink-0">
                   <Icon size={15} />
                 </span>
-                <span className="opacity-70">{text}</span>
+                <span className="opacity-70">{t(key)}</span>
               </motion.div>
             ))}
           </div>
         </div>
 
-        <p className="text-xs opacity-30">© {new Date().getFullYear()} Chat AI. Đồ án minh họa.</p>
+        <p className="text-xs opacity-30">{t("auth.layout.copyright", { year: new Date().getFullYear() })}</p>
       </div>
 
       {/* Form panel */}
       <div className="flex-1 flex items-center justify-center px-4 sm:px-6 relative z-10">
+        <div className="absolute top-4 end-4 z-20">
+          <LanguageSwitcher mode="ui" align="end" />
+        </div>
+
         <motion.div
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}

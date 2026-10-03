@@ -12,16 +12,12 @@ import Tooltip from "../components/Tooltip.jsx";
 import UsageModal, { usageTone, TEXT_TONE } from "../components/UsageModal.jsx";
 import { useChatStream } from "../hooks/useChatStream.js";
 import { useAuth } from "../context/AuthContext.jsx";
-import { useToast, apiErrorMessage } from "../context/ToastContext.jsx";
+import { useToast } from "../context/ToastContext.jsx";
+import { useI18n } from "../i18n/I18nContext.jsx";
 import { useConfirm } from "../context/ConfirmContext.jsx";
 import { conversationToMarkdown, downloadTextFile, safeFileName } from "../utils/exportConversation.js";
 
-const SUGGESTIONS = [
-  "Giải thích REST API là gì",
-  "Viết hàm sắp xếp quicksort bằng JavaScript",
-  "Tối ưu truy vấn SQL Server chậm",
-  "Hôm nay thời tiết ở Hồ Chí Minh thế nào?",
-];
+const SUGGESTION_KEYS = ["chat.suggest1", "chat.suggest2", "chat.suggest3", "chat.suggest4"];
 
 const SIDEBAR_KEY = "chat-sidebar-collapsed";
 const isDesktop = () => typeof window !== "undefined" && window.matchMedia("(min-width: 768px)").matches;
@@ -56,6 +52,7 @@ export default function Chat() {
   const draftTouchedRef = useRef(false); // người dùng đã tự chọn model -> không ghi đè bằng model mặc định
   const { sendMessage, regenerate, editMessage, stop, isStreaming } = useChatStream();
   const { user } = useAuth();
+  const { t, errorMessage, lang } = useI18n();
   const toast = useToast();
   const confirm = useConfirm();
 
@@ -77,11 +74,11 @@ export default function Chat() {
         setConversations(res.data.data.conversations);
         return res.data.data.conversations;
       } catch (err) {
-        toast.error(apiErrorMessage(err, "Không thể tải danh sách cuộc trò chuyện."));
+        toast.error(errorMessage(err, "chat.err.loadConversations"));
         return [];
       }
     },
-    [toast]
+    [toast, errorMessage]
   );
 
   const loadUsage = useCallback(async () => {
@@ -93,13 +90,13 @@ export default function Chat() {
     } catch (err) {
       // Không chặn chat, nhưng cho người dùng biết lý do để dễ xử lý.
       const status = err.response?.status;
-      if (status === 404) setUsageError("Backend chưa có API /usage. Hãy khởi động lại backend (npm run dev trong thư mục backend).");
-      else if (!err.response) setUsageError("Không kết nối được backend. Hãy kiểm tra backend đang chạy.");
-      else setUsageError(err.response?.data?.error?.message || `Không tải được mức sử dụng (lỗi ${status}).`);
+      if (status === 404) setUsageError(t("usage.err.notFound"));
+      else if (!err.response) setUsageError(t("usage.err.network"));
+      else setUsageError(t("usage.err.status", { status }));
     } finally {
       setUsageLoading(false);
     }
-  }, []);
+  }, [t]);
 
   const loadModels = useCallback(async () => {
     try {
@@ -113,9 +110,9 @@ export default function Chat() {
         if (preferred) setDraftModel({ provider: preferred.provider, model: preferred.modelId });
       }
     } catch (err) {
-      toast.error(apiErrorMessage(err, "Không thể tải danh sách mô hình AI."));
+      toast.error(errorMessage(err, "chat.err.loadModels"));
     }
-  }, [toast]);
+  }, [toast, errorMessage]);
 
   useEffect(() => {
     try {
@@ -151,7 +148,7 @@ export default function Chat() {
         }
       })
       .catch((err) => {
-        if (!cancelled) toast.error(apiErrorMessage(err, "Không thể tải tin nhắn của cuộc trò chuyện này."));
+        if (!cancelled) toast.error(errorMessage(err, "chat.err.loadMessages"));
       })
       .finally(() => {
         if (!cancelled) setMessagesLoading(false);
@@ -205,7 +202,7 @@ export default function Chat() {
       setActiveId(conv._id);
       setSidebarOpen(false);
     } catch (err) {
-      toast.error(apiErrorMessage(err, "Không thể tạo cuộc trò chuyện mới."));
+      toast.error(errorMessage(err, "chat.err.create"));
     }
   };
 
@@ -232,9 +229,15 @@ export default function Chat() {
 
   const handleExport = () => {
     if (messages.length === 0) return;
-    const title = activeConversation?.title || "Cuộc trò chuyện";
-    downloadTextFile(`${safeFileName(title)}.md`, conversationToMarkdown(title, messages));
-    toast.success("Đã xuất cuộc trò chuyện ra file Markdown.");
+    const title = activeConversation?.title || t("chat.exportDefaultTitle");
+    const labels = {
+      exportedAt: (time) => t("export.exportedAt", { time }),
+      you: t("export.you"),
+      ai: t("export.ai"),
+      attachedImages: (n) => t("export.attachedImages", { n }),
+    };
+    downloadTextFile(`${safeFileName(title, t("chat.exportFileFallback"))}.md`, conversationToMarkdown(title, messages, labels, lang));
+    toast.success(t("chat.exported"));
   };
 
   const ensureConversation = async () => {
@@ -315,7 +318,7 @@ export default function Chat() {
       const convId = await ensureConversation();
       await sendMessage(convId, content, { images, useWebSearch }, buildHandlers(assistantKey, { userKey, onPreStreamError: showSendError }));
     } catch (err) {
-      showSendError(apiErrorMessage(err, "Không thể tạo cuộc trò chuyện."), "CONVERSATION_FAILED");
+      showSendError(errorMessage(err, "error.CONVERSATION_FAILED"), "CONVERSATION_FAILED");
     } finally {
       sendLockRef.current = false;
       setIsSubmitting(false);
@@ -333,7 +336,7 @@ export default function Chat() {
     try {
       await regenerate(activeId, buildHandlers(assistantKey));
     } catch (err) {
-      toast.error(apiErrorMessage(err, "Không thể tạo lại câu trả lời."));
+      toast.error(errorMessage(err, "chat.err.regenerate"));
     }
   };
 
@@ -365,7 +368,7 @@ export default function Chat() {
     try {
       await editMessage(activeId, messageId, text, {}, buildHandlers(assistantKey, { onPreStreamError: restore }));
     } catch (err) {
-      restore(apiErrorMessage(err, "Không thể sửa tin nhắn."));
+      restore(errorMessage(err, "chat.err.edit"));
     } finally {
       sendLockRef.current = false;
       setIsSubmitting(false);
@@ -389,7 +392,7 @@ export default function Chat() {
     try {
       await api.patch(`/chat/message/${messageId}/feedback`, { feedback });
     } catch (err) {
-      toast.error(apiErrorMessage(err, "Không thể ghi nhận đánh giá."));
+      toast.error(errorMessage(err, "chat.err.feedback"));
     }
   };
 
@@ -403,7 +406,7 @@ export default function Chat() {
       setConversations((prev) => prev.map((c) => (c._id === activeId ? { ...c, provider, model } : c)));
     } catch (err) {
       setDraftModel(prevDraft);
-      toast.error(apiErrorMessage(err, "Không thể đổi mô hình cho cuộc trò chuyện này."));
+      toast.error(errorMessage(err, "chat.err.changeModel"));
     }
   };
 
@@ -412,7 +415,7 @@ export default function Chat() {
       await api.patch(`/conversations/${id}`, { title });
       setConversations((prev) => prev.map((c) => (c._id === id ? { ...c, title } : c)));
     } catch (err) {
-      toast.error(apiErrorMessage(err, "Không thể đổi tên cuộc trò chuyện."));
+      toast.error(errorMessage(err, "chat.err.rename"));
     }
   };
 
@@ -421,15 +424,15 @@ export default function Chat() {
       await api.patch(`/conversations/${id}`, { pinned });
       await loadConversations(searchTerm);
     } catch (err) {
-      toast.error(apiErrorMessage(err, "Không thể ghim cuộc trò chuyện."));
+      toast.error(errorMessage(err, "chat.err.pin"));
     }
   };
 
   const handleDelete = async (id) => {
     const ok = await confirm({
-      title: "Xóa cuộc trò chuyện?",
-      message: "Toàn bộ tin nhắn trong cuộc trò chuyện này sẽ bị xóa vĩnh viễn và không thể khôi phục.",
-      confirmLabel: "Xóa",
+      title: t("chat.deleteConfirm.title"),
+      message: t("chat.deleteConfirm.message"),
+      confirmLabel: t("chat.deleteConfirm.ok"),
       danger: true,
     });
     if (!ok) return;
@@ -439,9 +442,9 @@ export default function Chat() {
       const updated = conversations.filter((c) => c._id !== id);
       setConversations(updated);
       if (activeId === id) setActiveId(updated[0]?._id || null);
-      toast.success("Đã xóa cuộc trò chuyện.");
+      toast.success(t("chat.deleted"));
     } catch (err) {
-      toast.error(apiErrorMessage(err, "Không thể xóa cuộc trò chuyện."));
+      toast.error(errorMessage(err, "chat.err.delete"));
     }
   };
 
@@ -476,20 +479,20 @@ export default function Chat() {
         <header className="relative z-30 flex items-center justify-between px-4 py-3 border-b border-edge-light dark:border-edge-dark glass">
           <button
             onClick={() => setSidebarOpen(true)}
-            aria-label="Mở danh sách cuộc trò chuyện"
+            aria-label={t("chat.openSidebar")}
             className="md:hidden p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/10"
           >
             <Menu size={20} />
           </button>
           <ModelSelector models={models} value={currentSelection} onChange={handleModelChange} />
           <div className="flex items-center gap-1">
-          <Tooltip label="Mức sử dụng token" align="end">
+          <Tooltip label={t("chat.usageTip")} align="end">
             <button
               onClick={() => {
                 setUsageOpen(true);
                 loadUsage();
               }}
-              aria-label="Xem mức sử dụng token"
+              aria-label={t("chat.usageAria")}
               className="flex items-center gap-1.5 px-2 py-2 rounded-xl hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
             >
               <Gauge size={18} />
@@ -498,11 +501,11 @@ export default function Chat() {
               )}
             </button>
           </Tooltip>
-          <Tooltip label="Xuất cuộc trò chuyện (.md)" align="end">
+          <Tooltip label={t("chat.exportTip")} align="end">
 <button
             onClick={handleExport}
             disabled={messages.length === 0}
-            aria-label="Xuất cuộc trò chuyện ra file Markdown"
+            aria-label={t("chat.exportAria")}
             className="p-2 rounded-xl hover:bg-black/5 dark:hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
           >
             <Download size={18} />
@@ -526,19 +529,19 @@ export default function Chat() {
               <div className="h-full flex flex-col items-center justify-center px-6">
                 <BrandMark size={58} className="mb-4 drop-shadow-lg" />
                 <p className="text-sm font-medium text-brand-600 dark:text-brand-300 mb-1">
-                  Chào {user?.username || "bạn"} 👋
+                  {t("chat.hello", { name: user?.username || t("chat.friend") })}
                 </p>
-                <h2 className="font-display text-2xl font-semibold mb-1 tracking-tight">Bạn muốn hỏi gì hôm nay?</h2>
-                <p className="text-sm opacity-50 mb-6">Chat AI — trợ lý AI miễn phí cho đồ án của bạn</p>
+                <h2 className="font-display text-2xl font-semibold mb-1 tracking-tight">{t("chat.title")}</h2>
+                <p className="text-sm opacity-50 mb-6">{t("chat.tagline")}</p>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-w-lg w-full">
-                  {SUGGESTIONS.map((s) => (
+                  {SUGGESTION_KEYS.map((key) => (
                     <button
-                      key={s}
-                      onClick={() => handleSend(s)}
+                      key={key}
+                      onClick={() => handleSend(t(key))}
                       disabled={isStreaming || isSubmitting}
-                      className="text-left text-sm px-4 py-3 rounded-2xl glass border border-edge-light dark:border-edge-dark hover:border-brand-400/60 hover:shadow-soft disabled:opacity-50 transition-all"
+                      className="text-start text-sm px-4 py-3 rounded-2xl glass border border-edge-light dark:border-edge-dark hover:border-brand-400/60 hover:shadow-soft disabled:opacity-50 transition-all"
                     >
-                      {s}
+                      {t(key)}
                     </button>
                   ))}
                 </div>
@@ -570,7 +573,7 @@ export default function Chat() {
                   exit={{ opacity: 0, y: 8 }}
                   transition={{ duration: 0.15 }}
                   onClick={scrollToBottom}
-                  aria-label="Cuộn xuống tin nhắn mới nhất"
+                  aria-label={t("chat.scrollBottom")}
                   className="pointer-events-auto w-9 h-9 rounded-full glass border border-edge-light dark:border-edge-dark shadow-soft flex items-center justify-center hover:border-brand-400/60 transition-colors"
                 >
                   <ArrowDown size={16} />

@@ -3,17 +3,18 @@ import { CheckCircle2, XCircle, Power, Star, Plus, Trash2, X, Pencil, Image as I
 import { motion, AnimatePresence } from "framer-motion";
 import api from "../../api/axios.js";
 import { CardRowSkeleton } from "../../components/Skeleton.jsx";
-import { useToast, apiErrorMessage } from "../../context/ToastContext.jsx";
+import { useToast } from "../../context/ToastContext.jsx";
 import { useConfirm } from "../../context/ConfirmContext.jsx";
 import { useModalA11y } from "../../hooks/useModalA11y.js";
 import Tooltip from "../../components/Tooltip.jsx";
+import { useI18n } from "../../i18n/I18nContext.jsx";
 
 const PROVIDERS = ["groq", "gemini", "openrouter"];
 const CAPABILITY_OPTIONS = [
-  { value: "text", label: "Văn bản" },
-  { value: "reasoning", label: "Suy luận" },
-  { value: "coding", label: "Lập trình" },
-  { value: "vision", label: "Hình ảnh (Vision)" },
+  { value: "text", labelKey: "admin.models.cap.text" },
+  { value: "reasoning", labelKey: "admin.models.cap.reasoning" },
+  { value: "coding", labelKey: "admin.models.cap.coding" },
+  { value: "vision", labelKey: "admin.models.cap.vision" },
 ];
 const EMPTY_FORM = {
   provider: "groq",
@@ -27,6 +28,7 @@ const EMPTY_FORM = {
 };
 
 function ModelFormModal({ open, onClose, onSaved, editingModel }) {
+  const { t, errorMessage } = useI18n();
   const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const toast = useToast();
@@ -62,7 +64,7 @@ function ModelFormModal({ open, onClose, onSaved, editingModel }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!form.modelId.trim() || !form.displayName.trim()) {
-      toast.warning("Vui lòng nhập đủ Model ID và Tên hiển thị.");
+      toast.warning(t("admin.form.required"));
       return;
     }
     setSaving(true);
@@ -76,15 +78,15 @@ function ModelFormModal({ open, onClose, onSaved, editingModel }) {
       if (isEditing) {
         const res = await api.patch(`/admin/models/${editingModel._id}`, payload);
         onSaved(res.data.data.model, "update");
-        toast.success("Đã cập nhật mô hình.");
+        toast.success(t("admin.form.updated"));
       } else {
         const res = await api.post("/admin/models", payload);
         onSaved(res.data.data.model, "create");
-        toast.success("Đã thêm mô hình mới.");
+        toast.success(t("admin.form.created"));
       }
       onClose();
     } catch (err) {
-      toast.error(apiErrorMessage(err, isEditing ? "Không thể cập nhật mô hình." : "Không thể thêm mô hình."));
+      toast.error(errorMessage(err, isEditing ? "admin.models.err.update" : "admin.models.err.create"));
     } finally {
       setSaving(false);
     }
@@ -104,7 +106,7 @@ function ModelFormModal({ open, onClose, onSaved, editingModel }) {
             ref={formRef}
             role="dialog"
             aria-modal="true"
-            aria-label={isEditing ? "Sửa mô hình AI" : "Thêm mô hình AI"}
+            aria-label={isEditing ? t("admin.form.editTitle") : t("admin.form.addTitle")}
             onSubmit={handleSubmit}
             initial={{ opacity: 0, y: 12, scale: 0.96 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -114,15 +116,15 @@ function ModelFormModal({ open, onClose, onSaved, editingModel }) {
             className="w-full max-w-md max-h-[90vh] overflow-y-auto rounded-3xl glass border border-edge-light dark:border-edge-dark shadow-soft p-6"
           >
             <div className="flex items-center justify-between mb-5">
-              <h2 className="font-display text-lg font-semibold tracking-tight">{isEditing ? "Sửa mô hình AI" : "Thêm mô hình AI"}</h2>
-              <button type="button" onClick={onClose} aria-label="Đóng" className="p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/10">
+              <h2 className="font-display text-lg font-semibold tracking-tight">{isEditing ? t("admin.form.editTitle") : t("admin.form.addTitle")}</h2>
+              <button type="button" onClick={onClose} aria-label={t("common.close")} className="p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/10">
                 <X size={16} />
               </button>
             </div>
 
             <div className="space-y-3">
               <div>
-                <label className="text-xs font-medium opacity-60 mb-1 block">Nhà cung cấp</label>
+                <label className="text-xs font-medium opacity-60 mb-1 block">{t("admin.form.provider")}</label>
                 <select
                   value={form.provider}
                   disabled={isEditing}
@@ -137,36 +139,36 @@ function ModelFormModal({ open, onClose, onSaved, editingModel }) {
                 </select>
               </div>
               <div>
-                <label className="text-xs font-medium opacity-60 mb-1 block">Model ID (tên gọi API thực tế)</label>
+                <label className="text-xs font-medium opacity-60 mb-1 block">{t("admin.form.modelId")}</label>
                 <input
                   value={form.modelId}
                   disabled={isEditing}
                   onChange={(e) => setForm((f) => ({ ...f, modelId: e.target.value }))}
-                  placeholder="vd: gemini-2.5-flash"
+                  placeholder={t("admin.form.modelIdPlaceholder")}
                   className="w-full px-3 py-2 rounded-xl border border-edge-light dark:border-edge-dark bg-white/50 dark:bg-white/5 text-sm outline-none focus:border-brand-400 disabled:opacity-50"
                 />
               </div>
               <div>
-                <label className="text-xs font-medium opacity-60 mb-1 block">Tên hiển thị</label>
+                <label className="text-xs font-medium opacity-60 mb-1 block">{t("admin.form.displayName")}</label>
                 <input
                   value={form.displayName}
                   onChange={(e) => setForm((f) => ({ ...f, displayName: e.target.value }))}
-                  placeholder="vd: Gemini 2.5 Flash"
+                  placeholder={t("admin.form.displayNamePlaceholder")}
                   className="w-full px-3 py-2 rounded-xl border border-edge-light dark:border-edge-dark bg-white/50 dark:bg-white/5 text-sm outline-none focus:border-brand-400"
                 />
               </div>
               <div>
-                <label className="text-xs font-medium opacity-60 mb-1 block">Mô tả (tùy chọn)</label>
+                <label className="text-xs font-medium opacity-60 mb-1 block">{t("admin.form.description")}</label>
                 <input
                   value={form.description}
                   onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
-                  placeholder="Mô tả ngắn hiển thị trong bộ chọn mô hình"
+                  placeholder={t("admin.form.descriptionPlaceholder")}
                   className="w-full px-3 py-2 rounded-xl border border-edge-light dark:border-edge-dark bg-white/50 dark:bg-white/5 text-sm outline-none focus:border-brand-400"
                 />
               </div>
 
               <div>
-                <label className="text-xs font-medium opacity-60 mb-1.5 block">Khả năng (capabilities)</label>
+                <label className="text-xs font-medium opacity-60 mb-1.5 block">{t("admin.form.capabilities")}</label>
                 <div className="flex flex-wrap gap-1.5">
                   {CAPABILITY_OPTIONS.map((opt) => {
                     const active = form.capabilities.includes(opt.value);
@@ -182,17 +184,17 @@ function ModelFormModal({ open, onClose, onSaved, editingModel }) {
                             : "border-edge-light dark:border-edge-dark opacity-60 hover:opacity-100"
                         }`}
                       >
-                        {opt.label}
+                        {t(opt.labelKey)}
                       </button>
                     );
                   })}
                 </div>
-                <p className="text-[11px] opacity-40 mt-1.5">Bật "Hình ảnh (Vision)" để cho phép người dùng đính kèm ảnh khi trò chuyện với mô hình này.</p>
+                <p className="text-[11px] opacity-40 mt-1.5">{t("admin.form.visionHint")}</p>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs font-medium opacity-60 mb-1 block">Độ dài ngữ cảnh (tokens)</label>
+                  <label className="text-xs font-medium opacity-60 mb-1 block">{t("admin.form.contextLength")}</label>
                   <input
                     type="number"
                     min={0}
@@ -202,7 +204,7 @@ function ModelFormModal({ open, onClose, onSaved, editingModel }) {
                   />
                 </div>
                 <div>
-                  <label className="text-xs font-medium opacity-60 mb-1 block">Thứ tự ưu tiên</label>
+                  <label className="text-xs font-medium opacity-60 mb-1 block">{t("admin.form.priority")}</label>
                   <input
                     type="number"
                     value={form.priority}
@@ -212,7 +214,7 @@ function ModelFormModal({ open, onClose, onSaved, editingModel }) {
                 </div>
               </div>
               <div>
-                <label className="text-xs font-medium opacity-60 mb-1 block">Hạn mức token / người dùng / ngày (0 = không giới hạn)</label>
+                <label className="text-xs font-medium opacity-60 mb-1 block">{t("admin.form.dailyLimit")}</label>
                 <input
                   type="number"
                   min={0}
@@ -222,8 +224,7 @@ function ModelFormModal({ open, onClose, onSaved, editingModel }) {
                 />
               </div>
               <p className="text-[11px] opacity-40 -mt-1">
-                Độ dài ngữ cảnh: giới hạn token thật của model; hệ thống tự bỏ bớt tin nhắn cũ để không vượt 70% giá trị này.
-                Thứ tự ưu tiên: số nhỏ được dùng trước khi tự động chuyển sang nhà cung cấp khác (khi model bạn chọn lỗi hoặc hết lượt).
+                {t("admin.form.hint")}
               </p>
             </div>
 
@@ -233,14 +234,14 @@ function ModelFormModal({ open, onClose, onSaved, editingModel }) {
                 onClick={onClose}
                 className="flex-1 py-2.5 rounded-2xl text-sm font-medium border border-edge-light dark:border-edge-dark hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
               >
-                Hủy
+                {t("admin.form.cancel")}
               </button>
               <button
                 type="submit"
                 disabled={saving}
                 className="flex-1 py-2.5 rounded-2xl text-sm font-medium text-white bg-gradient-to-r from-brand-500 to-brand-600 hover:shadow-glow disabled:opacity-60 transition-all"
               >
-                {saving ? "Đang lưu..." : isEditing ? "Lưu thay đổi" : "Thêm mô hình"}
+                {saving ? t("admin.form.saving") : isEditing ? t("admin.form.save") : t("admin.form.create")}
               </button>
             </div>
           </motion.form>
@@ -251,6 +252,7 @@ function ModelFormModal({ open, onClose, onSaved, editingModel }) {
 }
 
 export default function AdminModels() {
+  const { t, errorMessage } = useI18n();
   const [models, setModels] = useState([]);
   const [configuredProviders, setConfiguredProviders] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -265,7 +267,7 @@ export default function AdminModels() {
       setModels(res.data.data.models);
       setConfiguredProviders(res.data.data.configuredProviders);
     } catch (err) {
-      toast.error(apiErrorMessage(err, "Không thể tải danh sách mô hình."));
+      toast.error(errorMessage(err, "admin.models.err.load"));
     } finally {
       setLoading(false);
     }
@@ -283,34 +285,34 @@ export default function AdminModels() {
       await api.patch(`/admin/models/${model._id}`, { enabled: next });
     } catch (err) {
       setModels((prev) => prev.map((m) => (m._id === model._id ? { ...m, enabled: !next } : m)));
-      toast.error(apiErrorMessage(err, "Không thể cập nhật trạng thái mô hình."));
+      toast.error(errorMessage(err, "admin.models.err.toggle"));
     }
   };
 
   const setDefault = async (model) => {
     try {
       await api.patch(`/admin/models/${model._id}`, { isDefault: true });
-      toast.success(`Đã đặt "${model.displayName}" làm mặc định.`);
+      toast.success(t("admin.models.defaultSet", { name: model.displayName }));
       load();
     } catch (err) {
-      toast.error(apiErrorMessage(err, "Không thể đặt mô hình mặc định."));
+      toast.error(errorMessage(err, "admin.models.err.default"));
     }
   };
 
   const removeModel = async (model) => {
     const ok = await confirm({
-      title: "Xóa mô hình?",
-      message: `Xóa "${model.displayName}" khỏi danh sách? Người dùng sẽ không thể chọn mô hình này nữa.`,
-      confirmLabel: "Xóa",
+      title: t("admin.models.deleteTitle"),
+      message: t("admin.models.deleteMessage", { name: model.displayName }),
+      confirmLabel: t("chat.deleteConfirm.ok"),
       danger: true,
     });
     if (!ok) return;
     try {
       await api.delete(`/admin/models/${model._id}`);
       setModels((prev) => prev.filter((m) => m._id !== model._id));
-      toast.success("Đã xóa mô hình.");
+      toast.success(t("admin.models.deleted"));
     } catch (err) {
-      toast.error(apiErrorMessage(err, "Không thể xóa mô hình."));
+      toast.error(errorMessage(err, "admin.models.err.delete"));
     }
   };
 
@@ -341,14 +343,14 @@ export default function AdminModels() {
     <div className="max-w-4xl space-y-6">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h1 className="font-display text-xl font-semibold tracking-tight">Quản lý mô hình AI</h1>
-          <p className="text-sm opacity-50">Bật/tắt, thêm, sửa hoặc xóa mô hình hiển thị cho người dùng. API key được cấu hình trong tệp .env của backend, không lưu ở đây.</p>
+          <h1 className="font-display text-xl font-semibold tracking-tight">{t("admin.models.title")}</h1>
+          <p className="text-sm opacity-50">{t("admin.models.subtitle")}</p>
         </div>
         <button
           onClick={openCreate}
           className="shrink-0 flex items-center gap-1.5 px-3.5 py-2 rounded-2xl text-sm font-medium text-white bg-gradient-to-r from-brand-500 to-brand-600 hover:shadow-glow transition-all"
         >
-          <Plus size={15} /> Thêm mô hình
+          <Plus size={15} /> {t("admin.models.add")}
         </button>
       </div>
 
@@ -361,7 +363,7 @@ export default function AdminModels() {
       )}
 
       {!loading && models.length === 0 && (
-        <p className="text-sm opacity-40 py-6 text-center">Chưa có mô hình nào được cấu hình.</p>
+        <p className="text-sm opacity-40 py-6 text-center">{t("admin.models.empty")}</p>
       )}
 
       {Object.entries(grouped).map(([provider, list]) => {
@@ -372,7 +374,7 @@ export default function AdminModels() {
               <span className="font-medium capitalize text-sm">{provider}</span>
               <span className={`flex items-center gap-1.5 text-xs ${configured ? "text-ion-600" : "text-red-500"}`}>
                 {configured ? <CheckCircle2 size={14} /> : <XCircle size={14} />}
-                {configured ? "Đã có API key" : "Chưa có API key trong .env"}
+                {configured ? t("admin.models.hasKey") : t("admin.models.noKey")}
               </span>
             </div>
             <div className="divide-y divide-edge-light dark:divide-edge-dark">
@@ -387,7 +389,7 @@ export default function AdminModels() {
                         .map((c) => {
                           const Icon = CAPABILITY_ICONS[c];
                           return (
-                            <Tooltip key={c} label={CAPABILITY_OPTIONS.find((o) => o.value === c)?.label ?? c} side="top">
+                            <Tooltip key={c} label={t(CAPABILITY_OPTIONS.find((o) => o.value === c)?.labelKey ?? "admin.models.cap.text")} side="top">
                               <span className="w-4 h-4 rounded-full bg-brand-500/10 text-brand-500 flex items-center justify-center shrink-0">
                                 <Icon size={10} />
                               </span>
@@ -400,7 +402,7 @@ export default function AdminModels() {
                   <div className="flex items-center gap-1.5 shrink-0">
                     {!m.isDefault && (
                       <button onClick={() => setDefault(m)} className="text-xs px-2.5 py-1 rounded-lg hover:bg-black/5 dark:hover:bg-white/10 whitespace-nowrap">
-                        Đặt mặc định
+                        {t("admin.models.setDefault")}
                       </button>
                     )}
                     <button
@@ -409,18 +411,18 @@ export default function AdminModels() {
                         m.enabled ? "bg-ion-500/10 text-ion-600" : "bg-black/5 dark:bg-white/10 opacity-60"
                       }`}
                     >
-                      <Power size={13} /> {m.enabled ? "Đang bật" : "Đã tắt"}
+                      <Power size={13} /> {m.enabled ? t("admin.models.on") : t("admin.models.off")}
                     </button>
                     <button
                       onClick={() => openEdit(m)}
-                      aria-label={`Sửa mô hình ${m.displayName}`}
+                      aria-label={t("admin.models.editFor", { name: m.displayName })}
                       className="p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/10"
                     >
                       <Pencil size={14} />
                     </button>
                     <button
                       onClick={() => removeModel(m)}
-                      aria-label={`Xóa mô hình ${m.displayName}`}
+                      aria-label={t("admin.models.deleteFor", { name: m.displayName })}
                       className="p-1.5 rounded-lg hover:bg-red-500/10 text-red-500"
                     >
                       <Trash2 size={14} />
