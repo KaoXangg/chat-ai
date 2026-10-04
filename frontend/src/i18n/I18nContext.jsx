@@ -36,6 +36,9 @@ function detectLanguage() {
     if (UI_CODES.has(raw)) return raw;
     const base = raw.split("-")[0];
     if (UI_CODES.has(base)) return base;
+    // Mã gốc không có từ điển riêng (vd. "zh") nhưng có biến thể vùng (vd. "zh-CN") -> dùng biến thể đó.
+    const regional = [...UI_CODES].find((code) => code.split("-")[0] === base);
+    if (regional) return regional;
   }
   return DEFAULT_LANG;
 }

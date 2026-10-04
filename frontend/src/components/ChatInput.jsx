@@ -250,6 +250,7 @@ export default function ChatInput({ onSend, isStreaming, disabled = false, onSto
             }}
             disabled={disabled}
             rows={1}
+            dir="auto"
             placeholder={t("input.placeholder")}
             className="flex-1 resize-none bg-transparent outline-none text-[15px] py-2 max-h-48 placeholder:text-black/40 dark:placeholder:text-white/40"
           />

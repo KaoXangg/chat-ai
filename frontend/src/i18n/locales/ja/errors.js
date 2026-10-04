@@ -1,0 +1,17 @@
+export default {
+  "error.PROVIDER_UNAVAILABLE": "現在 AI に接続できません。もう一度お試しください。",
+  "error.QUOTA_EXCEEDED": "利用可能なモデルの本日のトークン上限を使い切りました。上限は 00:00 にリセットされます。別のモデルを選ぶこともできます。",
+  "error.NOT_FOUND": "お探しの項目が見つかりません。",
+  "error.FORBIDDEN": "この操作を行う権限がありません。",
+  "error.EMPTY_MESSAGE": "メッセージを入力してください。",
+  "error.MESSAGE_TOO_LONG": "メッセージが長すぎます。",
+  "error.IMAGE_NOT_SUPPORTED": "選択中のモデルは画像分析に対応していません。「画像対応」ラベルのあるモデルを選んでください。",
+  "error.INVALID_IMAGE": "無効または大きすぎる画像があります（1 枚あたり最大 6MB）。",
+  "error.INVALID_FEEDBACK": "フィードバックの値が正しくありません。",
+  "error.REQUEST_FAILED": "サーバーに接続できません。",
+  "error.CONVERSATION_FAILED": "会話を作成できませんでした。",
+  "error.CANNOT_DELETE_SELF": "自分自身のアカウントは削除できません。",
+  "error.CANNOT_MODIFY_SELF": "自分自身を停止したり権限を下げたりすることはできません。",
+  "error.INVALID_AVATAR": "アバターが正しくありません。ランダムアバターのボタンを使ってください。",
+  "error.INTERNAL_ERROR": "サーバーエラーが発生しました。もう一度お試しください。",
+};

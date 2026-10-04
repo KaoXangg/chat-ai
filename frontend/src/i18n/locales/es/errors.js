@@ -1,0 +1,17 @@
+export default {
+  "error.PROVIDER_UNAVAILABLE": "No se puede conectar con la IA en este momento. Inténtalo de nuevo.",
+  "error.QUOTA_EXCEEDED": "Has agotado la cuota de tokens de hoy para los modelos disponibles. La cuota se restablece a las 00:00; también puedes elegir otro modelo.",
+  "error.NOT_FOUND": "No se encontró el elemento solicitado.",
+  "error.FORBIDDEN": "No tienes permiso para hacer esto.",
+  "error.EMPTY_MESSAGE": "El mensaje no puede estar vacío.",
+  "error.MESSAGE_TOO_LONG": "El mensaje es demasiado largo.",
+  "error.IMAGE_NOT_SUPPORTED": "El modelo seleccionado no admite análisis de imágenes. Elige un modelo con la etiqueta Visión.",
+  "error.INVALID_IMAGE": "Hay una imagen no válida o demasiado grande (máximo 6 MB por imagen).",
+  "error.INVALID_FEEDBACK": "Valor de valoración no válido.",
+  "error.REQUEST_FAILED": "No se puede conectar con el servidor.",
+  "error.CONVERSATION_FAILED": "No se pudo crear la conversación.",
+  "error.CANNOT_DELETE_SELF": "No puedes eliminar tu propia cuenta.",
+  "error.CANNOT_MODIFY_SELF": "No puedes suspenderte ni quitarte permisos a ti mismo.",
+  "error.INVALID_AVATAR": "Avatar no válido. Usa el botón de avatar aleatorio.",
+  "error.INTERNAL_ERROR": "Se produjo un error del servidor. Inténtalo de nuevo.",
+};

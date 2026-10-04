@@ -189,6 +189,7 @@ function CodeBlock({ language, code }) {
   return (
     <div
       data-copy-code={code}
+      dir="ltr"
       className="my-4 rounded-xl overflow-hidden border border-white/10 bg-[#282c34]"
     >
       <div className="flex items-center justify-between px-4 py-2 bg-white/5 text-xs text-white/60">
@@ -510,7 +511,7 @@ export default function MessageBubble({ message, isLast, onRegenerate, onFeedbac
           {isUser ? (
             <>
               <ImageGrid images={images} onOpen={setLightboxIndex} />
-              {message.content && <p className="whitespace-pre-wrap break-words">{message.content}</p>}
+              {message.content && <p dir="auto" className="whitespace-pre-wrap break-words">{message.content}</p>}
             </>
           ) : isStreaming && isLast && !message.content && !message.error ? (
             <div className="typing-indicator" role="status" aria-label={t("msg.typing")}>
@@ -523,6 +524,7 @@ export default function MessageBubble({ message, isLast, onRegenerate, onFeedbac
               {(message.content || !message.error) && (
                 <div
                   ref={markdownRef}
+                  dir="auto"
                   className={clsx("markdown-body", isStreaming && isLast && !message.error && "typing-cursor")}
                 >
                   <MarkdownContent content={message.content} />

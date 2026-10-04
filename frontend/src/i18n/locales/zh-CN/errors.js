@@ -1,0 +1,17 @@
+export default {
+  "error.PROVIDER_UNAVAILABLE": "目前无法连接到 AI，请重试。",
+  "error.QUOTA_EXCEEDED": "你今天在可用模型上的 token 额度已用完。额度将在 00:00 重置，你也可以选择其他模型。",
+  "error.NOT_FOUND": "未找到所请求的内容。",
+  "error.FORBIDDEN": "你没有权限执行此操作。",
+  "error.EMPTY_MESSAGE": "消息不能为空。",
+  "error.MESSAGE_TOO_LONG": "消息过长。",
+  "error.IMAGE_NOT_SUPPORTED": "所选模型不支持图片分析，请选择带有“视觉”标签的模型。",
+  "error.INVALID_IMAGE": "有图片无效或过大（每张最大 6MB）。",
+  "error.INVALID_FEEDBACK": "反馈值无效。",
+  "error.REQUEST_FAILED": "无法连接到服务器。",
+  "error.CONVERSATION_FAILED": "无法创建对话。",
+  "error.CANNOT_DELETE_SELF": "你不能删除自己的账号。",
+  "error.CANNOT_MODIFY_SELF": "你不能停用自己或降低自己的权限。",
+  "error.INVALID_AVATAR": "头像无效，请使用随机头像按钮。",
+  "error.INTERNAL_ERROR": "服务器出错，请重试。",
+};
