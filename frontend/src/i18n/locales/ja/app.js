@@ -91,4 +91,7 @@ export default {
   "model.noKeyShort": "API キー未設定",
   "model.noKey": "このプロバイダーの API キーが設定されていません",
   "model.none": "利用できるモデルがありません",
+  "auth.reset.success": "パスワードを再設定しました。新しいパスワードでログインしてください。",
+  "auth.theme.toLight": "ライトテーマに切り替え",
+  "auth.theme.toDark": "ダークテーマに切り替え",
 };

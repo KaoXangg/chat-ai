@@ -173,3 +173,29 @@ body {
 .dark .glass {
   background: rgba(20, 20, 31, 0.55);
 }
+/* ---------- Auth: nền chuyển động chậm + cross-fade khi đổi ngôn ngữ ---------- */
+@keyframes auth-ambient {
+  0% { transform: translate3d(0, 0, 0) scale(1); }
+  100% { transform: translate3d(2.5%, 3%, 0) scale(1.06); }
+}
+.auth-ambient {
+  animation: auth-ambient 48s ease-in-out infinite alternate;
+  will-change: transform;
+}
+
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 0.22s;
+  animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .auth-ambient {
+    animation: none;
+  }
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
+  }
+}

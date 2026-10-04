@@ -1,94 +1,151 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { motion, AnimatePresence } from "framer-motion";
-import { Loader2, AlertCircle, CheckCircle2 } from "lucide-react";
+import { AnimatePresence, motion } from "framer-motion";
+import { ArrowLeft, ArrowRight, KeyRound, Mail, MailCheck, RefreshCw } from "lucide-react";
 import api from "../api/axios.js";
+import { useAuthEmail } from "../context/AuthDraftContext.jsx";
 import AuthLayout from "../components/AuthLayout.jsx";
+import AuthInput from "../components/AuthInput.jsx";
+import AuthButton from "../components/AuthButton.jsx";
+import FormAlert from "../components/FormAlert.jsx";
+import { Reveal } from "../components/AuthMotion.jsx";
 import { useI18n } from "../i18n/I18nContext.jsx";
 
+// Chỉ có animation thoát: phần vào do Reveal của từng phần tử đảm nhiệm (tránh fade chồng fade).
+const swapExit = { opacity: 0, y: -6, transition: { duration: 0.16, ease: [0.4, 0, 1, 1] } };
+
 export default function ForgotPassword() {
-  const [email, setEmail] = useState("");
-  const [error, setError] = useState("");
-  const [message, setMessage] = useState("");
+  const [email, setEmail] = useAuthEmail();
+  const [emailError, setEmailError] = useState("");
+  const [formError, setFormError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [isSent, setIsSent] = useState(false);
+  const submittingRef = useRef(false);
+
   const navigate = useNavigate();
   const { t, errorMessage } = useI18n();
 
+  const validate = () => {
+    const trimmed = email.trim();
+    if (!trimmed) {
+      setEmailError(t("auth.validation.emailRequired"));
+      return false;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
+      setEmailError(t("auth.validation.emailInvalid"));
+      return false;
+    }
+    setEmailError("");
+    return true;
+  };
+
   const handleSubmit = async (e) => {
-    e.preventDefault();
-    setError("");
-    setMessage("");
+    if (e) e.preventDefault();
+    if (submittingRef.current) return;
+    setFormError("");
+
+    if (!validate()) return;
+
+    submittingRef.current = true;
     setLoading(true);
     try {
-      await api.post("/auth/forgot-password", { email });
-      setMessage(t("auth.forgot.sent"));
-      setTimeout(() => navigate(`/reset-password?email=${encodeURIComponent(email)}`), 1200);
+      await api.post("/auth/forgot-password", { email: email.trim() });
+      setIsSent(true);
     } catch (err) {
-      setError(errorMessage(err, "auth.forgot.failed"));
+      setFormError(errorMessage(err, "auth.forgot.failed"));
     } finally {
+      submittingRef.current = false;
       setLoading(false);
     }
   };
 
+  const handleProceedToReset = () => {
+    navigate(`/reset-password?email=${encodeURIComponent(email.trim())}`);
+  };
+
   return (
     <AuthLayout
-      title={t("auth.forgot.title")}
-      subtitle={t("auth.forgot.subtitle")}
+      stateKey={isSent ? "sent" : "form"}
+      title={isSent ? t("auth.forgot.sentTitle") : t("auth.forgot.title")}
+      subtitle={isSent ? undefined : t("auth.forgot.subtitle")}
+      iconBadge={isSent ? MailCheck : KeyRound}
       footer={
-        <>
-          {t("auth.forgot.remembered")}{" "}
-          <Link to="/login" className="text-brand-500 font-medium hover:underline">
-            {t("auth.forgot.login")}
-          </Link>
-        </>
+        <Link
+          to="/login"
+          className="inline-flex items-center gap-1.5 text-zinc-600 dark:text-zinc-400 hover:text-brand-600 dark:hover:text-brand-400 font-medium transition-colors"
+        >
+          <ArrowLeft size={14} />
+          <span>{t("auth.forgot.backToLogin")}</span>
+        </Link>
       }
     >
-      <form onSubmit={handleSubmit} className="space-y-3" noValidate>
-        <input
-          type="email"
-          required
-          autoComplete="email"
-          placeholder={t("auth.forgot.email")}
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          className="w-full ps-4 pe-4 py-2.5 rounded-2xl border border-edge-light dark:border-edge-dark bg-white/50 dark:bg-white/5 outline-none focus:border-brand-400 focus:shadow-glow text-sm transition-all"
-        />
+      <AnimatePresence mode="wait">
+        {isSent ? (
+          <motion.div key="success-sent" exit={swapExit} className="space-y-5">
+            <Reveal i={2}>
+              <div className="p-4 rounded-2xl bg-brand-500/10 border border-brand-500/20 text-xs text-zinc-700 dark:text-zinc-300 leading-relaxed">
+                <p className="font-semibold text-brand-600 dark:text-brand-400 text-sm mb-1">{t("auth.forgot.sent")}</p>
+                <p className="opacity-80">{t("auth.forgot.sentDesc")}</p>
+                <p className="mt-2 text-[11px] font-mono text-zinc-500 dark:text-zinc-400 break-all bg-white/60 dark:bg-black/20 p-2 rounded-xl">
+                  {email.trim()}
+                </p>
+              </div>
+            </Reveal>
 
-        <AnimatePresence>
-          {error && (
-            <motion.p
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: "auto" }}
-              exit={{ opacity: 0, height: 0 }}
-              role="alert"
-              className="flex items-center gap-1.5 text-sm text-red-500"
-            >
-              <AlertCircle size={14} className="shrink-0" /> {error}
-            </motion.p>
-          )}
-          {message && (
-            <motion.p
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: "auto" }}
-              exit={{ opacity: 0, height: 0 }}
-              role="status"
-              className="flex items-center gap-1.5 text-sm text-ion-500"
-            >
-              <CheckCircle2 size={14} className="shrink-0" /> {message}
-            </motion.p>
-          )}
-        </AnimatePresence>
+            <div className="space-y-2.5">
+              <Reveal i={3}>
+                <AuthButton type="button" onClick={handleProceedToReset} icon={ArrowRight}>
+                  {t("auth.forgot.proceedToReset")}
+                </AuthButton>
+              </Reveal>
 
-        <motion.button
-          whileTap={{ scale: 0.98 }}
-          type="submit"
-          disabled={loading}
-          className="w-full flex items-center justify-center gap-2 py-2.5 rounded-2xl bg-gradient-to-r from-brand-500 to-brand-600 hover:shadow-glow disabled:opacity-60 text-white text-sm font-medium transition-all"
-        >
-          {loading && <Loader2 size={16} className="animate-spin" />}
-          {t("auth.forgot.submit")}
-        </motion.button>
-      </form>
+              <Reveal i={4}>
+                <AuthButton
+                  type="button"
+                  variant="secondary"
+                  loading={loading}
+                  onClick={handleSubmit}
+                  icon={RefreshCw}
+                >
+                  {t("auth.forgot.resend")}
+                </AuthButton>
+              </Reveal>
+            </div>
+
+            <FormAlert message={formError} />
+          </motion.div>
+        ) : (
+          <motion.form key="form-input" exit={swapExit} onSubmit={handleSubmit} className="space-y-4" noValidate>
+            <Reveal i={2}>
+              <AuthInput
+                id="forgot-email"
+                label={t("auth.forgot.email")}
+                type="email"
+                required
+                autoComplete="email"
+                icon={Mail}
+                placeholder={t("auth.forgot.emailPlaceholder")}
+                value={email}
+                onChange={(e) => {
+                  setEmail(e.target.value);
+                  if (emailError) setEmailError("");
+                  if (formError) setFormError("");
+                }}
+                error={emailError}
+                disabled={loading}
+              />
+            </Reveal>
+
+            <FormAlert message={formError} />
+
+            <Reveal i={3}>
+              <AuthButton type="submit" loading={loading} error={Boolean(formError)}>
+                {loading ? t("auth.forgot.submitting") : t("auth.forgot.submit")}
+              </AuthButton>
+            </Reveal>
+          </motion.form>
+        )}
+      </AnimatePresence>
     </AuthLayout>
   );
 }

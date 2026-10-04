@@ -1,36 +1,89 @@
-import { useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { motion, AnimatePresence } from "framer-motion";
-import { Loader2, AlertCircle } from "lucide-react";
+import { ArrowLeft, Key, Lock, Mail, ShieldCheck } from "lucide-react";
 import api from "../api/axios.js";
+import { useAuthEmail } from "../context/AuthDraftContext.jsx";
 import AuthLayout from "../components/AuthLayout.jsx";
-import PasswordField from "../components/PasswordField.jsx";
+import AuthInput from "../components/AuthInput.jsx";
+import AuthButton from "../components/AuthButton.jsx";
+import FormAlert from "../components/FormAlert.jsx";
+import { Reveal } from "../components/AuthMotion.jsx";
 import { useI18n } from "../i18n/I18nContext.jsx";
 
 export default function ResetPassword() {
   const [searchParams] = useSearchParams();
-  const [email, setEmail] = useState(searchParams.get("email") || "");
+  const [email, setEmail] = useAuthEmail();
   const [otp, setOtp] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [error, setError] = useState("");
+
+  const [fieldErrors, setFieldErrors] = useState({});
+  const [formError, setFormError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [isSuccess, setIsSuccess] = useState(false);
+  const submittingRef = useRef(false);
+
   const navigate = useNavigate();
   const { t, errorMessage } = useI18n();
+  const locked = loading || isSuccess;
+
+  // Email từ liên kết (?email=...) được ưu tiên hơn email đang nhập ở trang trước.
+  useLayoutEffect(() => {
+    const fromQuery = searchParams.get("email");
+    if (fromQuery) setEmail(fromQuery);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const clearError = (key) => {
+    if (fieldErrors[key]) setFieldErrors((p) => ({ ...p, [key]: "" }));
+    if (formError) setFormError("");
+  };
+
+  const validate = () => {
+    const next = {};
+    if (!email.trim()) {
+      next.email = t("auth.validation.emailRequired");
+    }
+    if (!otp.trim()) {
+      next.otp = t("auth.validation.required");
+    } else if (otp.trim().length !== 6) {
+      next.otp = t("error.INVALID_OTP");
+    }
+    if (!newPassword) {
+      next.newPassword = t("auth.validation.passwordRequired");
+    } else if (newPassword.length < 6) {
+      next.newPassword = t("auth.validation.passwordMin");
+    }
+    if (!confirmPassword) {
+      next.confirmPassword = t("auth.validation.passwordRequired");
+    } else if (newPassword !== confirmPassword) {
+      next.confirmPassword = t("auth.reset.mismatch");
+    }
+    setFieldErrors(next);
+    return Object.keys(next).length === 0;
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setError("");
-    if (newPassword !== confirmPassword) {
-      setError(t("auth.reset.mismatch"));
-      return;
-    }
+    if (submittingRef.current) return;
+    setFormError("");
+
+    if (!validate()) return;
+
+    submittingRef.current = true;
     setLoading(true);
     try {
-      await api.post("/auth/reset-password", { email, otp, newPassword });
-      navigate("/login");
+      await api.post("/auth/reset-password", {
+        email: email.trim(),
+        otp: otp.trim(),
+        newPassword,
+      });
+      setIsSuccess(true);
+      // Quay về đăng nhập ngay, trang đăng nhập hiển thị thông báo thành công (không dùng setTimeout).
+      navigate("/login", { replace: true, state: { resetSuccess: true } });
     } catch (err) {
-      setError(errorMessage(err, "auth.reset.failed"));
+      setFormError(errorMessage(err, "auth.reset.failed"));
+      submittingRef.current = false;
     } finally {
       setLoading(false);
     }
@@ -40,71 +93,102 @@ export default function ResetPassword() {
     <AuthLayout
       title={t("auth.reset.title")}
       subtitle={t("auth.reset.subtitle")}
+      iconBadge={ShieldCheck}
       footer={
-        <Link to="/login" className="text-brand-500 font-medium hover:underline">
-          {t("auth.reset.back")}
+        <Link
+          to="/login"
+          className="inline-flex items-center gap-1.5 text-zinc-600 dark:text-zinc-400 hover:text-brand-600 dark:hover:text-brand-400 font-medium transition-colors"
+        >
+          <ArrowLeft size={14} />
+          <span>{t("auth.reset.back")}</span>
         </Link>
       }
     >
-      <form onSubmit={handleSubmit} className="space-y-3" noValidate>
-        <input
-          type="email"
-          required
-          autoComplete="email"
-          placeholder={t("auth.reset.email")}
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          className="w-full ps-4 pe-4 py-2.5 rounded-2xl border border-edge-light dark:border-edge-dark bg-white/50 dark:bg-white/5 outline-none focus:border-brand-400 focus:shadow-glow text-sm transition-all"
-        />
-        <input
-          required
-          inputMode="numeric"
-          maxLength={6}
-          placeholder={t("auth.reset.otp")}
-          value={otp}
-          onChange={(e) => setOtp(e.target.value)}
-          className="w-full ps-4 pe-4 py-2.5 rounded-2xl border border-edge-light dark:border-edge-dark bg-white/50 dark:bg-white/5 outline-none focus:border-brand-400 focus:shadow-glow text-sm transition-all tracking-widest"
-        />
-        <PasswordField
-          value={newPassword}
-          onChange={(e) => setNewPassword(e.target.value)}
-          placeholder={t("auth.reset.newPassword")}
-          required
-          minLength={6}
-          autoComplete="new-password"
-        />
-        <PasswordField
-          value={confirmPassword}
-          onChange={(e) => setConfirmPassword(e.target.value)}
-          placeholder={t("auth.reset.confirmPassword")}
-          required
-          minLength={6}
-          autoComplete="new-password"
-        />
+      <form onSubmit={handleSubmit} className="space-y-3.5" noValidate>
+        <Reveal i={2}>
+          <AuthInput
+            id="reset-email"
+            label={t("auth.reset.email")}
+            type="email"
+            required
+            autoComplete="email"
+            icon={Mail}
+            placeholder="name@example.com"
+            value={email}
+            onChange={(e) => {
+              setEmail(e.target.value);
+              clearError("email");
+            }}
+            error={fieldErrors.email}
+            disabled={locked}
+          />
+        </Reveal>
 
-        <AnimatePresence>
-          {error && (
-            <motion.p
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: "auto" }}
-              exit={{ opacity: 0, height: 0 }}
-              role="alert"
-              className="flex items-center gap-1.5 text-sm text-red-500"
-            >
-              <AlertCircle size={14} className="shrink-0" /> {error}
-            </motion.p>
-          )}
-        </AnimatePresence>
+        <Reveal i={3}>
+          <AuthInput
+            id="reset-otp"
+            label={t("auth.reset.otp")}
+            required
+            inputMode="numeric"
+            maxLength={6}
+            icon={Key}
+            placeholder={t("auth.reset.otpPlaceholder")}
+            value={otp}
+            onChange={(e) => {
+              setOtp(e.target.value.replace(/\D/g, ""));
+              clearError("otp");
+            }}
+            error={fieldErrors.otp}
+            disabled={locked}
+            className="tracking-widest font-mono"
+          />
+        </Reveal>
 
-        <motion.button
-          whileTap={{ scale: 0.98 }}
-          type="submit"
-          disabled={loading}
-          className="w-full flex items-center justify-center gap-2 py-2.5 rounded-2xl bg-gradient-to-r from-brand-500 to-brand-600 hover:shadow-glow disabled:opacity-60 text-white text-sm font-medium transition-all"
-        >
-          {loading && <Loader2 size={16} className="animate-spin" />}
-          {t("auth.reset.submit")}
-        </motion.button>
+        <Reveal i={4}>
+          <AuthInput
+            id="reset-new-password"
+            label={t("auth.reset.newPassword")}
+            isPassword
+            required
+            autoComplete="new-password"
+            icon={Lock}
+            placeholder={t("auth.reset.newPasswordPlaceholder")}
+            value={newPassword}
+            onChange={(e) => {
+              setNewPassword(e.target.value);
+              clearError("newPassword");
+            }}
+            error={fieldErrors.newPassword}
+            disabled={locked}
+          />
+        </Reveal>
+
+        <Reveal i={5}>
+          <AuthInput
+            id="reset-confirm-password"
+            label={t("auth.reset.confirmPassword")}
+            isPassword
+            required
+            autoComplete="new-password"
+            icon={Lock}
+            placeholder={t("auth.reset.confirmPasswordPlaceholder")}
+            value={confirmPassword}
+            onChange={(e) => {
+              setConfirmPassword(e.target.value);
+              clearError("confirmPassword");
+            }}
+            error={fieldErrors.confirmPassword}
+            disabled={locked}
+          />
+        </Reveal>
+
+        <FormAlert message={formError} />
+
+        <Reveal i={6}>
+          <AuthButton type="submit" loading={loading} success={isSuccess} error={Boolean(formError)}>
+            {loading ? t("auth.reset.submitting") : t("auth.reset.submit")}
+          </AuthButton>
+        </Reveal>
       </form>
     </AuthLayout>
   );

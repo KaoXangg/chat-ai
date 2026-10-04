@@ -91,4 +91,7 @@ export default {
   "model.noKeyShort": "clave API sin configurar",
   "model.noKey": "No hay clave API configurada para este proveedor",
   "model.none": "No hay modelos disponibles",
+  "auth.reset.success": "Contraseña restablecida. Inicia sesión con tu nueva contraseña.",
+  "auth.theme.toLight": "Cambiar a tema claro",
+  "auth.theme.toDark": "Cambiar a tema oscuro",
 };

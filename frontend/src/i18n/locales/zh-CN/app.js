@@ -91,4 +91,7 @@ export default {
   "model.noKeyShort": "未配置 API 密钥",
   "model.noKey": "该提供商尚未配置 API 密钥",
   "model.none": "暂无可用模型",
+  "auth.reset.success": "密码已重置，请使用新密码登录。",
+  "auth.theme.toLight": "切换到浅色主题",
+  "auth.theme.toDark": "切换到深色主题",
 };

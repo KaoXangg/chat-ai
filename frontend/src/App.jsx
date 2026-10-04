@@ -1,12 +1,13 @@
 import { Routes, Route, Navigate, useLocation } from "react-router-dom";
-import { AnimatePresence, motion } from "framer-motion";
-import { lazy, Suspense, useRef } from "react";
+import { AnimatePresence, MotionConfig, motion } from "framer-motion";
+import { lazy, Suspense } from "react";
 import Login from "./pages/Login.jsx";
 import Register from "./pages/Register.jsx";
 import ForgotPassword from "./pages/ForgotPassword.jsx";
 import ResetPassword from "./pages/ResetPassword.jsx";
 import ProtectedRoute from "./components/ProtectedRoute.jsx";
 import AdminRoute from "./components/AdminRoute.jsx";
+import AuthShell from "./components/AuthShell.jsx";
 import BrandMark from "./components/BrandMark.jsx";
 
 // Heavy pages are loaded on demand (code splitting): chat (markdown + syntax highlighter) and admin (charts).
@@ -16,6 +17,8 @@ const Dashboard = lazy(() => import("./pages/admin/Dashboard.jsx"));
 const AdminUsers = lazy(() => import("./pages/admin/Users.jsx"));
 const AdminModels = lazy(() => import("./pages/admin/Models.jsx"));
 const AdminConversations = lazy(() => import("./pages/admin/Conversations.jsx"));
+
+const AUTH_PATHS = new Set(["/login", "/register", "/forgot-password", "/reset-password"]);
 
 function PageFallback({ full }) {
   return (
@@ -35,115 +38,69 @@ function Lazy({ children, full = false }) {
   return <Suspense fallback={<PageFallback full={full} />}>{children}</Suspense>;
 }
 
-const AUTH_ORDER = { "/login": 0, "/register": 1, "/forgot-password": 2, "/reset-password": 3 };
-
-function PageFade({ children }) {
-  return (
-    <motion.div
-      initial={{ opacity: 0, scale: 0.99 }}
-      animate={{ opacity: 1, scale: 1 }}
-      exit={{ opacity: 0, scale: 0.99 }}
-      transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
-      className="h-full"
-    >
-      {children}
-    </motion.div>
-  );
-}
-
-/** Directional slide used only between auth pages (login/register/forgot/reset) for a premium "swap" feel. */
-function AuthPageSlide({ direction, children }) {
-  return (
-    <motion.div
-      initial={{ opacity: 0, x: direction >= 0 ? 40 : -40 }}
-      animate={{ opacity: 1, x: 0 }}
-      exit={{ opacity: 0, x: direction >= 0 ? -40 : 40 }}
-      transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
-      className="h-full"
-    >
-      {children}
-    </motion.div>
-  );
-}
-
+/**
+ * Kiến trúc chuyển trang:
+ *  - Các trang auth là route con của <AuthShell/>: nền, khu thương hiệu, card, tab và nút ngôn ngữ chỉ mount
+ *    một lần; chỉ vùng form được animate (xem AuthShell + AuthMotion). URL luôn là nguồn sự thật nên
+ *    Back/Forward của trình duyệt hoạt động đúng và không cần tải lại ứng dụng.
+ *  - Chuyển giữa khu vực auth <-> ứng dụng (đăng nhập xong / đăng xuất) chỉ fade opacity ngắn
+ *    (không dùng transform để không phá position: fixed của modal trong Chat/Admin).
+ *  - MotionConfig reducedMotion="user": người dùng bật "giảm chuyển động" sẽ chỉ còn fade, mọi dịch chuyển bị tắt.
+ */
 export default function App() {
   const location = useLocation();
-  const prevPathRef = useRef(location.pathname);
-
-  const isAuthNow = AUTH_ORDER[location.pathname] !== undefined;
-  const isAuthPrev = AUTH_ORDER[prevPathRef.current] !== undefined;
-  const direction =
-    isAuthNow && isAuthPrev ? Math.sign(AUTH_ORDER[location.pathname] - AUTH_ORDER[prevPathRef.current]) || 1 : 1;
-
-  prevPathRef.current = location.pathname;
-
-  const Wrap = isAuthNow && isAuthPrev ? ({ children }) => <AuthPageSlide direction={direction}>{children}</AuthPageSlide> : PageFade;
+  const section = AUTH_PATHS.has(location.pathname) ? "auth" : "app";
 
   return (
-    <AnimatePresence mode="wait" initial={false}>
-      <Routes location={location} key={location.pathname}>
-        <Route
-          path="/login"
-          element={
-            <Wrap>
-              <Login />
-            </Wrap>
-          }
-        />
-        <Route
-          path="/register"
-          element={
-            <Wrap>
-              <Register />
-            </Wrap>
-          }
-        />
-        <Route
-          path="/forgot-password"
-          element={
-            <Wrap>
-              <ForgotPassword />
-            </Wrap>
-          }
-        />
-        <Route
-          path="/reset-password"
-          element={
-            <Wrap>
-              <ResetPassword />
-            </Wrap>
-          }
-        />
-
-        <Route element={<ProtectedRoute />}>
-          <Route
-            path="/chat"
-            element={
-              <Lazy full>
-                <Chat />
-              </Lazy>
-            }
-          />
-
-          <Route element={<AdminRoute />}>
-            <Route
-              path="/admin"
-              element={
-                <Lazy full>
-                  <AdminLayout />
-                </Lazy>
-              }
-            >
-              <Route index element={<Lazy><Dashboard /></Lazy>} />
-              <Route path="users" element={<Lazy><AdminUsers /></Lazy>} />
-              <Route path="models" element={<Lazy><AdminModels /></Lazy>} />
-              <Route path="conversations" element={<Lazy><AdminConversations /></Lazy>} />
+    <MotionConfig reducedMotion="user">
+      <AnimatePresence mode="wait" initial={false}>
+        <motion.div
+          key={section}
+          className="h-full"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.16, ease: "easeOut" }}
+        >
+          <Routes location={location}>
+            <Route element={<AuthShell />}>
+              <Route path="/login" element={<Login />} />
+              <Route path="/register" element={<Register />} />
+              <Route path="/forgot-password" element={<ForgotPassword />} />
+              <Route path="/reset-password" element={<ResetPassword />} />
             </Route>
-          </Route>
-        </Route>
 
-        <Route path="*" element={<Navigate to="/chat" replace />} />
-      </Routes>
-    </AnimatePresence>
+            <Route element={<ProtectedRoute />}>
+              <Route
+                path="/chat"
+                element={
+                  <Lazy full>
+                    <Chat />
+                  </Lazy>
+                }
+              />
+
+              <Route element={<AdminRoute />}>
+                <Route
+                  path="/admin"
+                  element={
+                    <Lazy full>
+                      <AdminLayout />
+                    </Lazy>
+                  }
+                >
+                  <Route index element={<Lazy><Dashboard /></Lazy>} />
+                  <Route path="users" element={<Lazy><AdminUsers /></Lazy>} />
+                  <Route path="models" element={<Lazy><AdminModels /></Lazy>} />
+                  <Route path="conversations" element={<Lazy><AdminConversations /></Lazy>} />
+                </Route>
+              </Route>
+            </Route>
+
+            <Route path="*" element={<Navigate to="/chat" replace />} />
+          </Routes>
+        </motion.div>
+      </AnimatePresence>
+    </MotionConfig>
   );
 }
