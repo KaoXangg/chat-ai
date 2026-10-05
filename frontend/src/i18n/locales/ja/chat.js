@@ -1,4 +1,5 @@
 export default {
+  "input.prompt": "質問を入力…",
   "common.close": "閉じる",
 
   "toast.close": "通知を閉じる",

@@ -51,18 +51,18 @@ export default function AuthButton({
       aria-busy={loading || undefined}
       onClick={handleClick}
       className={clsx(
-        "relative w-full h-[42px] overflow-hidden flex items-center justify-center gap-2 px-4 rounded-2xl text-sm font-medium tracking-wide outline-none select-none",
-        "transition-[filter,box-shadow,background-color,border-color,opacity] duration-200",
-        "focus-visible:ring-2 focus-visible:ring-brand-500/50 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent",
+        "relative w-full h-[38px] sm:h-10 overflow-hidden flex items-center justify-center gap-2 px-4 rounded-xl text-[13.5px] sm:text-sm font-semibold tracking-normal outline-none select-none",
+        "transition-[filter,box-shadow,background-color,border-color,opacity,transform] duration-150",
+        "focus-visible:ring-2 focus-visible:ring-brand-500/40 focus-visible:ring-offset-1 focus-visible:ring-offset-transparent",
         isPrimary && [
-          "bg-gradient-to-b from-brand-500 to-brand-600 text-white shadow-md shadow-brand-500/20 border-t border-white/20",
-          !locked && !disabled && "hover:brightness-110 hover:shadow-lg hover:shadow-brand-500/30",
+          "bg-brand-600 hover:bg-brand-500 active:bg-brand-700 text-white shadow-xs shadow-brand-600/20",
+          !locked && !disabled && "hover:shadow-sm hover:shadow-brand-600/30",
           "disabled:opacity-60 disabled:pointer-events-none disabled:shadow-none",
           locked && "cursor-default",
         ],
         variant === "secondary" && [
-          "border border-edge-light dark:border-edge-dark bg-white/70 dark:bg-white/[0.04] text-zinc-800 dark:text-zinc-200",
-          !locked && !disabled && "hover:bg-zinc-100 dark:hover:bg-white/10 hover:border-zinc-300 dark:hover:border-zinc-700",
+          "border border-zinc-200 dark:border-zinc-800 bg-zinc-50/80 dark:bg-zinc-900/60 text-zinc-700 dark:text-zinc-200",
+          !locked && !disabled && "hover:bg-zinc-100 dark:hover:bg-zinc-800 hover:border-zinc-300 dark:hover:border-zinc-700",
           "disabled:opacity-50 disabled:pointer-events-none",
           locked && "cursor-default",
         ],

@@ -59,9 +59,9 @@ export default function AdminConversations() {
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   return (
-    <div className="max-w-5xl space-y-4">
-      <div className="flex items-center justify-between gap-3">
-        <div>
+    <div className="admin-page space-y-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="admin-page-heading">
           <h1 className="font-display text-xl font-semibold tracking-tight">{t("admin.conv.title")}</h1>
           <p className="text-sm opacity-50">{t("admin.conv.subtitle")}</p>
         </div>
@@ -73,20 +73,20 @@ export default function AdminConversations() {
         {loading && Array.from({ length: 4 }).map((_, i) => <CardRowSkeleton key={i} />)}
         {!loading &&
           conversations.map((c) => (
-            <div key={c._id} className="rounded-2xl glass border border-edge-light dark:border-edge-dark p-4 space-y-2 shadow-soft">
+            <div key={c._id} className="admin-data-panel p-4 space-y-3">
               <div className="flex items-center justify-between gap-2">
-                <p className="font-medium truncate flex items-center gap-1.5">
+                <p className="font-medium min-w-0 flex items-center gap-1.5">
                   {c.pinned && <Pin size={12} className="opacity-50 shrink-0" />}
-                  {isDefaultTitle(c.title) ? t("sidebar.newChat") : c.title}
+                  <span className="truncate">{isDefaultTitle(c.title) ? t("sidebar.newChat") : c.title}</span>
                 </p>
                 <button onClick={() => remove(c)} aria-label={t("sidebar.delete")} className="p-1.5 rounded-lg hover:bg-red-500/10 text-red-500 shrink-0">
                   <Trash2 size={14} />
                 </button>
               </div>
               <p className="text-xs opacity-60 truncate">{c.user?.username || "—"} · {c.user?.email || ""}</p>
-              <div className="flex items-center justify-between text-xs opacity-50">
-                <span className="capitalize">{c.provider} / {c.model}</span>
-                <span>{new Date(c.updatedAt).toLocaleDateString(lang)}</span>
+              <div className="flex items-center justify-between gap-3 text-xs workspace-muted">
+                <span className="capitalize min-w-0 break-all">{c.provider} / {c.model}</span>
+                <span className="shrink-0">{new Date(c.updatedAt).toLocaleDateString(lang)}</span>
               </div>
             </div>
           ))}
@@ -94,7 +94,7 @@ export default function AdminConversations() {
       </div>
 
       {/* Desktop / tablet: table */}
-      <div className="hidden sm:block rounded-2xl glass border border-edge-light dark:border-edge-dark overflow-hidden shadow-soft">
+      <div className="admin-data-panel hidden sm:block">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-black/5 dark:bg-white/5 text-start">

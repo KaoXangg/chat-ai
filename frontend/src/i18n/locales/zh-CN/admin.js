@@ -1,0 +1,15 @@
+export default {
+  "admin.users.detailSubtitle": "账户资料与活动",
+  "admin.users.roleUser": "用户",
+  "admin.users.activity": "聊天活动",
+  "admin.users.management": "账户管理",
+  "admin.users.promoteHint": "允许访问系统管理功能。",
+  "admin.users.demoteHint": "恢复为仅可使用聊天的权限。",
+  "admin.users.banHint": "暂时停用此账户的访问权限。",
+  "admin.users.unbanHint": "恢复登录与聊天权限。",
+  "admin.users.deleteHint": "删除账户及其全部聊天记录。",
+  "admin.layout.workspace": "工作区",
+  "admin.dash.configured": "已配置",
+  "admin.dash.notConfigured": "无 API 密钥",
+  "admin.dash.chartCount": "{n} 条消息",
+};

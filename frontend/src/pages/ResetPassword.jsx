@@ -1,6 +1,6 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { ArrowLeft, Key, Lock, Mail, ShieldCheck } from "lucide-react";
+import { ArrowLeft, Key, Lock, Mail } from "lucide-react";
 import api from "../api/axios.js";
 import { useAuthEmail } from "../context/AuthDraftContext.jsx";
 import AuthLayout from "../components/AuthLayout.jsx";
@@ -93,7 +93,6 @@ export default function ResetPassword() {
     <AuthLayout
       title={t("auth.reset.title")}
       subtitle={t("auth.reset.subtitle")}
-      iconBadge={ShieldCheck}
       footer={
         <Link
           to="/login"
@@ -104,7 +103,7 @@ export default function ResetPassword() {
         </Link>
       }
     >
-      <form onSubmit={handleSubmit} className="space-y-3.5" noValidate>
+      <form onSubmit={handleSubmit} className="space-y-2.5 sm:space-y-3" noValidate>
         <Reveal i={2}>
           <AuthInput
             id="reset-email"

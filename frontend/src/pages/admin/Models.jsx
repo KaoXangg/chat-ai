@@ -113,19 +113,20 @@ function ModelFormModal({ open, onClose, onSaved, editingModel }) {
             exit={{ opacity: 0, y: 8, scale: 0.97 }}
             transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
             onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-md max-h-[90vh] overflow-y-auto rounded-3xl glass border border-edge-light dark:border-edge-dark shadow-soft p-6"
+            className="admin-dialog w-full max-w-lg max-h-[90dvh] flex flex-col overflow-hidden rounded-2xl border border-edge-light dark:border-edge-dark shadow-soft p-5 sm:p-6"
           >
-            <div className="flex items-center justify-between mb-5">
+            <div className="flex items-center justify-between mb-5 shrink-0">
               <h2 className="font-display text-lg font-semibold tracking-tight">{isEditing ? t("admin.form.editTitle") : t("admin.form.addTitle")}</h2>
               <button type="button" onClick={onClose} aria-label={t("common.close")} className="p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/10">
                 <X size={16} />
               </button>
             </div>
 
-            <div className="space-y-3">
+            <div className="space-y-3 min-h-0 overflow-y-auto pe-2">
               <div>
-                <label className="text-xs font-medium opacity-60 mb-1 block">{t("admin.form.provider")}</label>
+                <label htmlFor="admin-model-provider" className="text-xs font-medium opacity-60 mb-1 block">{t("admin.form.provider")}</label>
                 <select
+                  id="admin-model-provider"
                   value={form.provider}
                   disabled={isEditing}
                   onChange={(e) => setForm((f) => ({ ...f, provider: e.target.value }))}
@@ -139,8 +140,9 @@ function ModelFormModal({ open, onClose, onSaved, editingModel }) {
                 </select>
               </div>
               <div>
-                <label className="text-xs font-medium opacity-60 mb-1 block">{t("admin.form.modelId")}</label>
+                <label htmlFor="admin-model-id" className="text-xs font-medium opacity-60 mb-1 block">{t("admin.form.modelId")}</label>
                 <input
+                  id="admin-model-id"
                   value={form.modelId}
                   disabled={isEditing}
                   onChange={(e) => setForm((f) => ({ ...f, modelId: e.target.value }))}
@@ -149,8 +151,9 @@ function ModelFormModal({ open, onClose, onSaved, editingModel }) {
                 />
               </div>
               <div>
-                <label className="text-xs font-medium opacity-60 mb-1 block">{t("admin.form.displayName")}</label>
+                <label htmlFor="admin-model-name" className="text-xs font-medium opacity-60 mb-1 block">{t("admin.form.displayName")}</label>
                 <input
+                  id="admin-model-name"
                   value={form.displayName}
                   onChange={(e) => setForm((f) => ({ ...f, displayName: e.target.value }))}
                   placeholder={t("admin.form.displayNamePlaceholder")}
@@ -158,8 +161,9 @@ function ModelFormModal({ open, onClose, onSaved, editingModel }) {
                 />
               </div>
               <div>
-                <label className="text-xs font-medium opacity-60 mb-1 block">{t("admin.form.description")}</label>
+                <label htmlFor="admin-model-description" className="text-xs font-medium opacity-60 mb-1 block">{t("admin.form.description")}</label>
                 <input
+                  id="admin-model-description"
                   value={form.description}
                   onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
                   placeholder={t("admin.form.descriptionPlaceholder")}
@@ -194,8 +198,9 @@ function ModelFormModal({ open, onClose, onSaved, editingModel }) {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs font-medium opacity-60 mb-1 block">{t("admin.form.contextLength")}</label>
+                  <label htmlFor="admin-model-context" className="text-xs font-medium opacity-60 mb-1 block">{t("admin.form.contextLength")}</label>
                   <input
+                    id="admin-model-context"
                     type="number"
                     min={0}
                     value={form.contextLength}
@@ -204,8 +209,9 @@ function ModelFormModal({ open, onClose, onSaved, editingModel }) {
                   />
                 </div>
                 <div>
-                  <label className="text-xs font-medium opacity-60 mb-1 block">{t("admin.form.priority")}</label>
+                  <label htmlFor="admin-model-priority" className="text-xs font-medium opacity-60 mb-1 block">{t("admin.form.priority")}</label>
                   <input
+                    id="admin-model-priority"
                     type="number"
                     value={form.priority}
                     onChange={(e) => setForm((f) => ({ ...f, priority: e.target.value }))}
@@ -214,8 +220,9 @@ function ModelFormModal({ open, onClose, onSaved, editingModel }) {
                 </div>
               </div>
               <div>
-                <label className="text-xs font-medium opacity-60 mb-1 block">{t("admin.form.dailyLimit")}</label>
+                <label htmlFor="admin-model-limit" className="text-xs font-medium opacity-60 mb-1 block">{t("admin.form.dailyLimit")}</label>
                 <input
+                  id="admin-model-limit"
                   type="number"
                   min={0}
                   value={form.dailyTokenLimit}
@@ -228,7 +235,7 @@ function ModelFormModal({ open, onClose, onSaved, editingModel }) {
               </p>
             </div>
 
-            <div className="flex items-center gap-2 mt-6">
+            <div className="flex items-center gap-2 mt-5 pt-4 border-t border-edge-light dark:border-edge-dark shrink-0">
               <button
                 type="button"
                 onClick={onClose}
@@ -239,7 +246,7 @@ function ModelFormModal({ open, onClose, onSaved, editingModel }) {
               <button
                 type="submit"
                 disabled={saving}
-                className="flex-1 py-2.5 rounded-2xl text-sm font-medium text-white bg-gradient-to-r from-brand-500 to-brand-600 hover:shadow-glow disabled:opacity-60 transition-all"
+                className="admin-primary-button flex-1"
               >
                 {saving ? t("admin.form.saving") : isEditing ? t("admin.form.save") : t("admin.form.create")}
               </button>
@@ -340,15 +347,15 @@ export default function AdminModels() {
   const CAPABILITY_ICONS = { vision: ImageIcon, reasoning: Brain, coding: Code2 };
 
   return (
-    <div className="max-w-4xl space-y-6">
-      <div className="flex items-start justify-between gap-3">
-        <div>
+    <div className="admin-page space-y-5">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="admin-page-heading">
           <h1 className="font-display text-xl font-semibold tracking-tight">{t("admin.models.title")}</h1>
           <p className="text-sm opacity-50">{t("admin.models.subtitle")}</p>
         </div>
         <button
           onClick={openCreate}
-          className="shrink-0 flex items-center gap-1.5 px-3.5 py-2 rounded-2xl text-sm font-medium text-white bg-gradient-to-r from-brand-500 to-brand-600 hover:shadow-glow transition-all"
+          className="admin-primary-button shrink-0"
         >
           <Plus size={15} /> {t("admin.models.add")}
         </button>
@@ -369,8 +376,8 @@ export default function AdminModels() {
       {Object.entries(grouped).map(([provider, list]) => {
         const configured = configuredProviders.includes(provider);
         return (
-          <div key={provider} className="rounded-2xl glass border border-edge-light dark:border-edge-dark overflow-hidden shadow-soft">
-            <div className="flex items-center justify-between px-4 py-3 bg-black/5 dark:bg-white/5">
+          <div key={provider} className="admin-data-panel">
+            <div className="admin-model-group-heading">
               <span className="font-medium capitalize text-sm">{provider}</span>
               <span className={`flex items-center gap-1.5 text-xs ${configured ? "text-ion-600" : "text-red-500"}`}>
                 {configured ? <CheckCircle2 size={14} /> : <XCircle size={14} />}
@@ -379,7 +386,7 @@ export default function AdminModels() {
             </div>
             <div className="divide-y divide-edge-light dark:divide-edge-dark">
               {list.map((m) => (
-                <div key={m._id} className="flex items-center justify-between px-4 py-3 gap-2">
+                <div key={m._id} className="admin-model-row">
                   <div className="min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-sm font-medium truncate">{m.displayName}</span>
@@ -399,7 +406,7 @@ export default function AdminModels() {
                     </div>
                     <p className="text-xs opacity-50 truncate">{m.modelId}</p>
                   </div>
-                  <div className="flex items-center gap-1.5 shrink-0">
+                  <div className="admin-model-actions">
                     {!m.isDefault && (
                       <button onClick={() => setDefault(m)} className="text-xs px-2.5 py-1 rounded-lg hover:bg-black/5 dark:hover:bg-white/10 whitespace-nowrap">
                         {t("admin.models.setDefault")}

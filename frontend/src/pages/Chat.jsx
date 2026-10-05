@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from "react";
-import { Menu, ArrowDown, Download, Gauge } from "lucide-react";
+import { Menu, ArrowDown, ArrowUpRight, Download, Gauge } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import clsx from "clsx";
 import api from "../api/axios.js";
@@ -9,6 +9,7 @@ import ChatInput from "../components/ChatInput.jsx";
 import ModelSelector from "../components/ModelSelector.jsx";
 import BrandMark from "../components/BrandMark.jsx";
 import Tooltip from "../components/Tooltip.jsx";
+import ThemeToggle from "../components/ThemeToggle.jsx";
 import UsageModal, { usageTone, TEXT_TONE } from "../components/UsageModal.jsx";
 import { useChatStream } from "../hooks/useChatStream.js";
 import { useAuth } from "../context/AuthContext.jsx";
@@ -454,8 +455,7 @@ export default function Chat() {
   };
 
   return (
-    <div className="h-screen flex bg-surface-light dark:bg-surface-dark text-black dark:text-white relative overflow-hidden">
-      <div className="aurora-bg" />
+    <div className="workspace-ui chat-shell relative">
       <Sidebar
         conversations={conversations}
         activeId={activeId}
@@ -475,17 +475,20 @@ export default function Chat() {
         onExpand={() => setDesktopCollapsed(false)}
       />
 
-      <div className="flex-1 flex flex-col min-w-0 relative z-10">
-        <header className="relative z-30 flex items-center justify-between px-4 py-3 border-b border-edge-light dark:border-edge-dark glass">
+      <div className="flex-1 flex flex-col min-w-0 min-h-0 relative z-10" inert={sidebarOpen && !isDesktop() ? "" : undefined}>
+        <header className="chat-header relative z-30 flex items-center justify-between border-b">
           <button
             onClick={() => setSidebarOpen(true)}
             aria-label={t("chat.openSidebar")}
-            className="md:hidden p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/10"
+            aria-expanded={sidebarOpen}
+            aria-controls="chat-navigation"
+            className="workspace-icon-button md:hidden"
           >
             <Menu size={20} />
           </button>
-          <ModelSelector models={models} value={currentSelection} onChange={handleModelChange} />
-          <div className="flex items-center gap-1">
+          <div className="chat-header-model"><ModelSelector models={models} value={currentSelection} onChange={handleModelChange} /></div>
+          <div className="chat-header-actions flex items-center gap-1">
+          <ThemeToggle className="me-1" />
           <Tooltip label={t("chat.usageTip")} align="end">
             <button
               onClick={() => {
@@ -526,22 +529,22 @@ export default function Chat() {
                 ))}
               </div>
             ) : messages.length === 0 ? (
-              <div className="h-full flex flex-col items-center justify-center px-6">
-                <BrandMark size={58} className="mb-4 drop-shadow-lg" />
+              <div className="chat-welcome">
+                <BrandMark size={44} className="mb-5" />
                 <p className="text-sm font-medium text-brand-600 dark:text-brand-300 mb-1">
                   {t("chat.hello", { name: user?.username || t("chat.friend") })}
                 </p>
                 <h2 className="font-display text-2xl font-semibold mb-1 tracking-tight">{t("chat.title")}</h2>
-                <p className="text-sm opacity-50 mb-6">{t("chat.tagline")}</p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-w-lg w-full">
+                <p className="text-sm workspace-muted mt-2 mb-7 max-w-md leading-relaxed">{t("chat.tagline")}</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-xl w-full">
                   {SUGGESTION_KEYS.map((key) => (
                     <button
                       key={key}
                       onClick={() => handleSend(t(key))}
                       disabled={isStreaming || isSubmitting}
-                      className="text-start text-sm px-4 py-3 rounded-2xl glass border border-edge-light dark:border-edge-dark hover:border-brand-400/60 hover:shadow-soft disabled:opacity-50 transition-all"
+                      className="chat-suggestion"
                     >
-                      {t(key)}
+                      <span>{t(key)}</span><ArrowUpRight size={16} className="shrink-0 workspace-muted" />
                     </button>
                   ))}
                 </div>

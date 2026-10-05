@@ -1,9 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { Plus, Search, Pin, Pencil, Trash2, Sun, Moon, LogOut, ShieldCheck, X, Check, PanelLeftClose, PanelLeftOpen, SquarePen, MessageSquare, Dices, Loader2 } from "lucide-react";
+import { Plus, Search, Pin, Pencil, Trash2, LogOut, ShieldCheck, X, Check, PanelLeftClose, PanelLeftOpen, SquarePen, MessageSquare, Dices, Loader2, ArrowUpRight } from "lucide-react";
 import clsx from "clsx";
-import { useTheme } from "../context/ThemeContext.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
 import { useNavigate } from "react-router-dom";
 import BrandMark from "./BrandMark.jsx";
@@ -11,6 +10,7 @@ import Tooltip from "./Tooltip.jsx";
 import UserAvatar from "./UserAvatar.jsx";
 import { useToast } from "../context/ToastContext.jsx";
 import { useI18n } from "../i18n/I18nContext.jsx";
+import { useModalA11y } from "../hooks/useModalA11y.js";
 
 // Tiêu đề mặc định do server tạo (có/không dấu) -> hiển thị theo ngôn ngữ giao diện.
 const DEFAULT_TITLES = new Set(["Cuoc tro chuyen moi", "Cuộc trò chuyện mới"]);
@@ -75,7 +75,14 @@ function ConversationRow({ conv, isActive, isEditing, editValue, onEditValueChan
           className="flex-1 bg-transparent outline-none border-b border-brand-400"
         />
       ) : (
-        <span className="flex-1 truncate">{isDefaultTitle(conv.title) ? t("sidebar.newChat") : conv.title}</span>
+        <button
+          type="button"
+          aria-pressed={isActive}
+          onClick={(e) => { e.stopPropagation(); onSelect(); }}
+          className="flex-1 min-w-0 truncate text-start"
+        >
+          {isDefaultTitle(conv.title) ? t("sidebar.newChat") : conv.title}
+        </button>
       )}
 
       {isEditing ? (
@@ -90,7 +97,7 @@ function ConversationRow({ conv, isActive, isEditing, editValue, onEditValueChan
           <Check size={13} />
         </button>
       ) : (
-        <div className="hidden group-hover:flex items-center gap-0.5 shrink-0">
+        <div className="flex md:hidden md:group-hover:flex md:group-focus-within:flex items-center gap-0.5 shrink-0">
           <button
             onClick={(e) => {
               e.stopPropagation();
@@ -231,7 +238,6 @@ export default function Sidebar({
   onCollapse,
   onExpand,
 }) {
-  const { theme, toggleTheme } = useTheme();
   const { user, logout, randomizeAvatar } = useAuth();
   const { t, errorMessage } = useI18n();
   const toast = useToast();
@@ -239,6 +245,15 @@ export default function Sidebar({
   const [avatarBusy, setAvatarBusy] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [editValue, setEditValue] = useState("");
+  const [isMobile, setIsMobile] = useState(() => window.matchMedia("(max-width: 767px)").matches);
+  const drawerRef = useModalA11y(isOpen && isMobile, onCloseMobile);
+
+  useEffect(() => {
+    const media = window.matchMedia("(max-width: 767px)");
+    const update = () => setIsMobile(media.matches);
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, []);
 
   // Popover của thanh icon thu gọn (đã ghim / gần đây)
   const [flyout, setFlyout] = useState(null);
@@ -316,15 +331,22 @@ export default function Sidebar({
       </AnimatePresence>
 
       <aside
+        id="chat-navigation"
+        ref={drawerRef}
+        role={isOpen && isMobile ? "dialog" : undefined}
+        aria-modal={isOpen && isMobile ? true : undefined}
+        aria-label={t("admin.nav.conversations")}
+        inert={isMobile && !isOpen ? "" : undefined}
+        tabIndex={-1}
         className={clsx(
-          "fixed md:relative inset-y-0 left-0 z-40 w-72 shrink-0 glass border-r border-edge-light dark:border-edge-dark overflow-hidden transition-[transform,width] duration-300",
+          "chat-sidebar fixed md:relative inset-y-0 left-0 z-40 w-72 shrink-0 border-r overflow-hidden transition-[transform,width] duration-300",
           isOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0",
           collapsed ? "md:w-14" : "md:w-72"
         )}
       >
         <div
           className={clsx(
-            "flex flex-col h-full w-72 shrink-0 transition-[opacity,visibility] duration-200",
+            "flex flex-col h-full min-h-0 w-72 shrink-0 transition-[opacity,visibility] duration-200",
             collapsed && "md:opacity-0 md:invisible"
           )}
         >
@@ -357,7 +379,7 @@ export default function Sidebar({
 <motion.button
             whileTap={{ scale: 0.97 }}
             onClick={onNew}
-            className="w-full flex items-center gap-2 justify-center px-3 py-2.5 rounded-2xl bg-gradient-to-r from-brand-500 to-brand-600 hover:shadow-glow text-white text-sm font-medium transition-shadow"
+            className="w-full flex items-center gap-2 justify-center px-3 py-2.5 rounded-xl bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium transition-colors"
           >
             <Plus size={16} /> {t("sidebar.newChat")}
           </motion.button>
@@ -374,12 +396,12 @@ export default function Sidebar({
               id="sidebar-search"
               onChange={(e) => onSearch(e.target.value)}
               placeholder={t("sidebar.searchPlaceholder")}
-              className="bg-transparent outline-none text-sm flex-1 placeholder:text-black/40 dark:placeholder:text-white/40"
+              className="bg-transparent outline-none text-sm flex-1 min-w-0 placeholder:text-black/40 dark:placeholder:text-white/40"
             />
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto mt-3 px-2 space-y-3">
+        <div className="flex-1 min-h-0 overflow-y-auto mt-3 px-2 space-y-3">
           {groups.map((group) => (
             <div key={group.key}>
               <p className="px-3 mb-1 text-[11px] font-semibold uppercase tracking-wide opacity-40">{t(group.key)}</p>
@@ -407,23 +429,20 @@ export default function Sidebar({
           {conversations.length === 0 && <p className="text-center text-xs opacity-40 py-6">{t("sidebar.empty")}</p>}
         </div>
 
-        <div className="p-3 border-t border-edge-light dark:border-edge-dark space-y-1">
+        <div className="chat-sidebar-footer p-3 shrink-0 border-t border-edge-light dark:border-edge-dark space-y-2">
           {user?.role === "admin" && (
             <button
+              type="button"
               onClick={() => navigate("/admin")}
-              className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-sm hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
+              className="workspace-route-button workspace-route-button--admin"
             >
-              <ShieldCheck size={16} className="text-brand-500" /> {t("sidebar.admin")}
+              <span className="workspace-route-icon" aria-hidden="true">
+                <ShieldCheck size={19} strokeWidth={1.8} />
+              </span>
+              <span className="workspace-route-label">{t("sidebar.admin")}</span>
+              <ArrowUpRight size={17} className="workspace-route-arrow" aria-hidden="true" />
             </button>
           )}
-          <button
-            onClick={toggleTheme}
-            aria-label={theme === "dark" ? t("sidebar.toLight") : t("sidebar.toDark")}
-            className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-sm hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
-          >
-            {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
-            {theme === "dark" ? t("sidebar.lightMode") : t("sidebar.darkMode")}
-          </button>
           <div className="flex items-center gap-2 px-3 py-2">
             <Tooltip label={t("sidebar.avatarTip")} side="top" align="start">
               <span className="relative inline-flex">

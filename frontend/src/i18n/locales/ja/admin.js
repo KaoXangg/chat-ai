@@ -1,0 +1,15 @@
+export default {
+  "admin.users.detailSubtitle": "アカウント情報と利用状況",
+  "admin.users.roleUser": "ユーザー",
+  "admin.users.activity": "チャットの利用状況",
+  "admin.users.management": "アカウント管理",
+  "admin.users.promoteHint": "システム管理へのアクセスを許可します。",
+  "admin.users.demoteHint": "チャットのみ利用できる権限に戻します。",
+  "admin.users.banHint": "このアカウントへのアクセスを一時停止します。",
+  "admin.users.unbanHint": "ログインとチャットへのアクセスを復元します。",
+  "admin.users.deleteHint": "アカウントとすべてのチャット履歴を削除します。",
+  "admin.layout.workspace": "ワークスペース",
+  "admin.dash.configured": "設定済み",
+  "admin.dash.notConfigured": "APIキーなし",
+  "admin.dash.chartCount": "{n}件のメッセージ",
+};

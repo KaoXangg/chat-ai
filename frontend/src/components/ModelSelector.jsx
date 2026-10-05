@@ -27,7 +27,19 @@ export default function ModelSelector({ models, value, onChange }) {
   }, {});
 
   return (
-    <div className="flex items-center gap-1.5">
+    <div className="flex items-center gap-1.5" onKeyDown={(e) => {
+      if (e.key === "Escape" && open) {
+        setOpen(false);
+        ref.current?.querySelector("button")?.focus();
+      }
+      if (!open || !["ArrowDown", "ArrowUp", "Home", "End"].includes(e.key)) return;
+      const options = Array.from(ref.current?.querySelectorAll('[role="option"]:not([disabled])') || []);
+      if (!options.length) return;
+      e.preventDefault();
+      const index = options.indexOf(document.activeElement);
+      const next = e.key === "Home" ? 0 : e.key === "End" ? options.length - 1 : e.key === "ArrowDown" ? (index + 1) % options.length : index < 0 ? options.length - 1 : (index - 1 + options.length) % options.length;
+      options[next]?.focus();
+    }}>
       <div className="relative" ref={ref}>
         <button
           onClick={() => setOpen((o) => !o)}
@@ -46,6 +58,8 @@ export default function ModelSelector({ models, value, onChange }) {
         <AnimatePresence>
           {open && (
             <motion.div
+              role="listbox"
+              aria-label={t("model.select")}
               initial={{ opacity: 0, y: -6, scale: 0.97 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: -6, scale: 0.97 }}

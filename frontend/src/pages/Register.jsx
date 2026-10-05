@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
-import { AlertCircle, Mail, Lock, User, UserPlus } from "lucide-react";
+import { AlertCircle, Mail, Lock, User } from "lucide-react";
 import clsx from "clsx";
 import { useAuth } from "../context/AuthContext.jsx";
 import { useAuthEmail } from "../context/AuthDraftContext.jsx";
@@ -118,7 +118,6 @@ export default function Register() {
     <AuthLayout
       title={t("auth.register.title")}
       subtitle={t("auth.register.subtitle")}
-      iconBadge={UserPlus}
       footer={
         <>
           <span>{t("auth.register.hasAccount")}</span>{" "}
@@ -131,7 +130,7 @@ export default function Register() {
         </>
       }
     >
-      <form onSubmit={handleSubmit} className="space-y-3.5" noValidate>
+      <form onSubmit={handleSubmit} className="space-y-2.5 sm:space-y-3" noValidate>
         <Reveal i={2}>
           <AuthInput
             id="register-username"
@@ -187,7 +186,7 @@ export default function Register() {
             disabled={locked}
           />
 
-          {/* Password strength meter: mở ra/đóng lại bằng chiều cao, không làm form nhảy */}
+          {/* Password strength meter: thanh mỏng tinh tế, không làm vỡ bố cục */}
           <AnimatePresence initial={false}>
             {password && (
               <motion.div
@@ -195,22 +194,22 @@ export default function Register() {
                 initial={{ height: 0, opacity: 0 }}
                 animate={{ height: "auto", opacity: 1 }}
                 exit={{ height: 0, opacity: 0 }}
-                transition={{ duration: 0.2, ease: EASE }}
+                transition={{ duration: 0.16, ease: EASE }}
                 className="overflow-hidden"
               >
-                <div className="pt-2 px-1">
-                  <div className="flex items-center justify-between text-[11px] mb-1.5">
+                <div className="pt-1.5 px-0.5">
+                  <div className="flex items-center justify-between text-[10.5px] mb-1">
                     <span className="text-zinc-500 dark:text-zinc-400">{t("auth.register.strengthLabel")}</span>
-                    <span className={clsx("font-medium transition-colors duration-200", STRENGTH_STYLES[score]?.label)}>
+                    <span className={clsx("font-medium transition-colors duration-150", STRENGTH_STYLES[score]?.label)}>
                       {t(`auth.register.strength${score}`)}
                     </span>
                   </div>
-                  <div className="flex gap-1 h-1.5 w-full bg-black/[0.06] dark:bg-white/[0.08] rounded-full overflow-hidden p-0.5">
+                  <div className="flex gap-1 h-1 w-full bg-zinc-200/80 dark:bg-zinc-800 rounded-full overflow-hidden p-0">
                     {[1, 2, 3, 4].map((step) => (
                       <div
                         key={step}
                         className={clsx(
-                          "flex-1 h-full rounded-full transition-[background-color,opacity] duration-300",
+                          "flex-1 h-full rounded-full transition-[background-color,opacity] duration-200",
                           step <= score ? STRENGTH_STYLES[score]?.bar : "bg-transparent"
                         )}
                       />
@@ -242,8 +241,9 @@ export default function Register() {
         </Reveal>
 
         <Reveal i={6}>
-          <div className="pt-1">
+          <div className="pt-0.5">
             <AuthCheckbox
+              id="register-terms"
               checked={agreeTerms}
               onChange={(e) => {
                 setAgreeTerms(e.target.checked);
@@ -252,15 +252,17 @@ export default function Register() {
               disabled={locked}
               invalid={Boolean(fieldErrors.terms)}
             >
-              {t("auth.register.termsAgree")}{" "}
-              <span className="text-brand-600 dark:text-brand-400 font-medium underline-offset-2 hover:underline">
-                {t("auth.register.termsService")}
-              </span>{" "}
-              {t("auth.register.and")}{" "}
-              <span className="text-brand-600 dark:text-brand-400 font-medium underline-offset-2 hover:underline">
-                {t("auth.register.privacy")}
+              <span className="text-[11.5px] leading-tight">
+                {t("auth.register.termsAgree")}{" "}
+                <span className="text-brand-600 dark:text-brand-400 font-medium underline-offset-2 hover:underline">
+                  {t("auth.register.termsService")}
+                </span>{" "}
+                {t("auth.register.and")}{" "}
+                <span className="text-brand-600 dark:text-brand-400 font-medium underline-offset-2 hover:underline">
+                  {t("auth.register.privacy")}
+                </span>
+                .
               </span>
-              .
             </AuthCheckbox>
 
             <AnimatePresence initial={false}>
@@ -268,14 +270,14 @@ export default function Register() {
                 <motion.div
                   key="terms-error"
                   role="alert"
-                  initial={{ opacity: 0, y: -4, height: 0 }}
+                  initial={{ opacity: 0, y: -3, height: 0 }}
                   animate={{ opacity: 1, y: 0, height: "auto" }}
-                  exit={{ opacity: 0, y: -4, height: 0 }}
-                  transition={{ duration: 0.18, ease: EASE }}
+                  exit={{ opacity: 0, y: -3, height: 0 }}
+                  transition={{ duration: 0.16, ease: EASE }}
                   className="overflow-hidden"
                 >
-                  <p className="flex items-center gap-1.5 text-xs text-red-500 pt-1 ps-6">
-                    <AlertCircle size={12} className="shrink-0" />
+                  <p className="flex items-center gap-1.5 text-[11px] text-red-500 pt-1 ps-6">
+                    <AlertCircle size={11} className="shrink-0" />
                     <span>{fieldErrors.terms}</span>
                   </p>
                 </motion.div>

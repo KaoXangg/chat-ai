@@ -1,4 +1,5 @@
 export default {
+  "input.prompt": "Type your question…",
   "common.close": "Close",
 
   "toast.close": "Dismiss notification",

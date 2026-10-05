@@ -68,7 +68,7 @@ export default function ForgotPassword() {
       stateKey={isSent ? "sent" : "form"}
       title={isSent ? t("auth.forgot.sentTitle") : t("auth.forgot.title")}
       subtitle={isSent ? undefined : t("auth.forgot.subtitle")}
-      iconBadge={isSent ? MailCheck : KeyRound}
+      iconBadge={isSent ? MailCheck : null}
       footer={
         <Link
           to="/login"
@@ -81,18 +81,18 @@ export default function ForgotPassword() {
     >
       <AnimatePresence mode="wait">
         {isSent ? (
-          <motion.div key="success-sent" exit={swapExit} className="space-y-5">
+          <motion.div key="success-sent" exit={swapExit} className="space-y-4">
             <Reveal i={2}>
-              <div className="p-4 rounded-2xl bg-brand-500/10 border border-brand-500/20 text-xs text-zinc-700 dark:text-zinc-300 leading-relaxed">
-                <p className="font-semibold text-brand-600 dark:text-brand-400 text-sm mb-1">{t("auth.forgot.sent")}</p>
-                <p className="opacity-80">{t("auth.forgot.sentDesc")}</p>
-                <p className="mt-2 text-[11px] font-mono text-zinc-500 dark:text-zinc-400 break-all bg-white/60 dark:bg-black/20 p-2 rounded-xl">
+              <div className="p-3.5 rounded-xl bg-brand-500/[0.07] border border-brand-500/20 text-xs text-zinc-700 dark:text-zinc-300 leading-relaxed">
+                <p className="font-semibold text-brand-600 dark:text-brand-400 text-xs sm:text-sm mb-1">{t("auth.forgot.sent")}</p>
+                <p className="text-zinc-600 dark:text-zinc-400 text-[11.5px] leading-normal">{t("auth.forgot.sentDesc")}</p>
+                <p className="mt-2 text-[11px] font-mono text-zinc-700 dark:text-zinc-300 break-all bg-white dark:bg-zinc-900/80 px-2.5 py-1.5 rounded-lg border border-zinc-200/80 dark:border-zinc-800">
                   {email.trim()}
                 </p>
               </div>
             </Reveal>
 
-            <div className="space-y-2.5">
+            <div className="space-y-2">
               <Reveal i={3}>
                 <AuthButton type="button" onClick={handleProceedToReset} icon={ArrowRight}>
                   {t("auth.forgot.proceedToReset")}
@@ -115,7 +115,7 @@ export default function ForgotPassword() {
             <FormAlert message={formError} />
           </motion.div>
         ) : (
-          <motion.form key="form-input" exit={swapExit} onSubmit={handleSubmit} className="space-y-4" noValidate>
+          <motion.form key="form-input" exit={swapExit} onSubmit={handleSubmit} className="space-y-3" noValidate>
             <Reveal i={2}>
               <AuthInput
                 id="forgot-email"

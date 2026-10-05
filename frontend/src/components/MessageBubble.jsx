@@ -4,7 +4,7 @@ import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import "katex/dist/katex.min.css";
 import { PrismLight as SyntaxHighlighter } from "react-syntax-highlighter";
-import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
+import { oneDark, oneLight } from "react-syntax-highlighter/dist/esm/styles/prism";
 import { Copy, RotateCcw, ThumbsUp, ThumbsDown, Check, X, ChevronLeft, ChevronRight, Pencil, AlertTriangle } from "lucide-react";
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
@@ -13,6 +13,7 @@ import BrandMark from "./BrandMark.jsx";
 import Tooltip from "./Tooltip.jsx";
 import UserAvatar from "./UserAvatar.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
+import { useTheme } from "../context/ThemeContext.jsx";
 import { useI18n } from "../i18n/I18nContext.jsx";
 import { useModalA11y } from "../hooks/useModalA11y.js";
 import { preprocessMath } from "../utils/mathPreprocess.js";
@@ -176,6 +177,7 @@ function Lightbox({ images, index, onClose, onNav }) {
 
 function CodeBlock({ language, code }) {
   const { t } = useI18n();
+  const { theme } = useTheme();
   const [copied, setCopied] = useState(false);
   const copy = async () => {
     try {
@@ -190,18 +192,18 @@ function CodeBlock({ language, code }) {
     <div
       data-copy-code={code}
       dir="ltr"
-      className="my-4 rounded-xl overflow-hidden border border-white/10 bg-[#282c34]"
+      className="my-4 rounded-xl overflow-hidden border border-edge-light dark:border-edge-dark bg-[#fafafa] dark:bg-[#282c34] max-w-full"
     >
-      <div className="flex items-center justify-between px-4 py-2 bg-white/5 text-xs text-white/60">
+      <div className="flex items-center justify-between px-4 py-2 bg-black/5 dark:bg-white/5 text-xs text-zinc-600 dark:text-zinc-300">
         <span className="font-mono">{language || "code"}</span>
-        <button onClick={copy} aria-label={t("msg.codeCopyAria")} className="flex items-center gap-1.5 hover:text-white transition-colors">
+        <button onClick={copy} aria-label={t("msg.codeCopyAria")} className="flex items-center gap-1.5 hover:text-zinc-900 dark:hover:text-white transition-colors">
           {copied ? <Check size={13} /> : <Copy size={13} />}
           {copied ? t("msg.codeCopied") : t("msg.codeCopy")}
         </button>
       </div>
       <SyntaxHighlighter
         language={language || "text"}
-        style={oneDark}
+        style={theme === "dark" ? oneDark : oneLight}
         customStyle={{ margin: 0, borderRadius: 0, background: "transparent", fontSize: "13px", padding: "1rem" }}
       >
         {code}
@@ -504,7 +506,7 @@ export default function MessageBubble({ message, isLast, onRegenerate, onFeedbac
           className={clsx(
             "text-[15px] leading-relaxed",
             isUser
-              ? "px-4 py-2.5 rounded-2xl rounded-tr-md bg-gradient-to-br from-brand-500 to-brand-600 text-white shadow-glow"
+              ? "px-4 py-2.5 rounded-2xl rounded-tr-md bg-brand-600 text-white"
               : "w-full px-1 py-0.5"
           )}
         >
@@ -554,7 +556,7 @@ export default function MessageBubble({ message, isLast, onRegenerate, onFeedbac
         )}
 
         {isUser && canEdit && !isEditing && (
-          <div className="flex items-center gap-1 mt-1.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+          <div className="chat-message-actions flex items-center gap-1 mt-1.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
             <Tooltip label={t("msg.edit")}>
               <button
                 onClick={() => setIsEditing(true)}
@@ -568,7 +570,7 @@ export default function MessageBubble({ message, isLast, onRegenerate, onFeedbac
         )}
 
         {!isUser && message.content && (
-          <div className="flex items-center gap-1 mt-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+          <div className="chat-message-actions flex items-center gap-1 mt-1.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
             <Tooltip label={copied ? t("msg.copied") : t("msg.copy")}>
 <button onClick={handleCopy} aria-label={t("msg.copyAnswer")} className="p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/10">
               {copied ? <Check size={14} className="text-ion-500" /> : <Copy size={14} className="opacity-60" />}

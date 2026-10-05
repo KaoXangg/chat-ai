@@ -1,0 +1,15 @@
+export default {
+  "admin.users.detailSubtitle": "Perfil y actividad de la cuenta",
+  "admin.users.roleUser": "Usuario",
+  "admin.users.activity": "Actividad de chat",
+  "admin.users.management": "Gestión de la cuenta",
+  "admin.users.promoteHint": "Permitir el acceso a la administración del sistema.",
+  "admin.users.demoteHint": "Limitar el acceso al chat.",
+  "admin.users.banHint": "Suspender temporalmente el acceso a esta cuenta.",
+  "admin.users.unbanHint": "Restaurar el acceso para iniciar sesión y chatear.",
+  "admin.users.deleteHint": "Eliminar la cuenta y todo su historial de chat.",
+  "admin.layout.workspace": "Espacio de trabajo",
+  "admin.dash.configured": "Configurado",
+  "admin.dash.notConfigured": "Sin clave API",
+  "admin.dash.chartCount": "{n} mensajes",
+};

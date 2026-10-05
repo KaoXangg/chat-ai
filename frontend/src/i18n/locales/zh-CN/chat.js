@@ -1,4 +1,5 @@
 export default {
+  "input.prompt": "输入你的问题…",
   "common.close": "关闭",
 
   "toast.close": "关闭通知",

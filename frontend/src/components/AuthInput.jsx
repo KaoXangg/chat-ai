@@ -72,12 +72,12 @@ const AuthInput = forwardRef(function AuthInput(
   };
 
   return (
-    <div className={clsx("group w-full space-y-1.5", className)}>
+    <div className={clsx("group w-full space-y-1", className)}>
       {label && (
         <div className="flex items-center justify-between text-xs font-medium">
           <label
             htmlFor={id}
-            className="text-zinc-700 dark:text-zinc-300 select-none transition-colors duration-200 group-focus-within:text-brand-600 dark:group-focus-within:text-brand-300"
+            className="text-zinc-700 dark:text-zinc-300 select-none transition-colors duration-150 group-focus-within:text-brand-600 dark:group-focus-within:text-brand-400"
           >
             {label}
             {required && <span className="text-red-500 ms-1" aria-hidden="true">*</span>}
@@ -89,25 +89,26 @@ const AuthInput = forwardRef(function AuthInput(
       <motion.div
         animate={nudge}
         className={clsx(
-          "relative flex items-center rounded-2xl",
-          "transition-[border-color,box-shadow,background-color] duration-200 ease-out",
-          "border bg-white/70 dark:bg-white/[0.04] backdrop-blur-sm",
+          "relative flex items-center rounded-xl",
+          "h-[38px] sm:h-10",
+          "transition-[border-color,box-shadow,background-color] duration-150 ease-out",
+          "border bg-white dark:bg-zinc-900/60 backdrop-blur-sm",
           error
-            ? "border-red-500/80 shadow-[0_0_0_3px_rgba(239,68,68,0.14)]"
-            : "border-edge-light dark:border-edge-dark hover:border-zinc-300 dark:hover:border-zinc-700 focus-within:border-brand-500 focus-within:shadow-[0_0_0_3px_rgba(109,91,255,0.16)]",
-          disabled && "opacity-70"
+            ? "border-red-500/80 shadow-[0_0_0_3px_rgba(239,68,68,0.12)]"
+            : "border-zinc-200 dark:border-zinc-800 hover:border-zinc-300 dark:hover:border-zinc-700 focus-within:border-brand-500 focus-within:shadow-[0_0_0_3px_rgba(99,102,241,0.14)]",
+          disabled && "opacity-70 bg-zinc-50 dark:bg-zinc-900/40"
         )}
       >
         {Icon && (
           <span
             className={clsx(
-              "ps-3.5 pe-1 pointer-events-none shrink-0 transition-colors duration-200",
+              "ps-3 pe-1 pointer-events-none shrink-0 transition-colors duration-150",
               error
-                ? "text-red-400"
-                : "text-zinc-400 dark:text-zinc-500 group-focus-within:text-brand-500 dark:group-focus-within:text-brand-400"
+                ? "text-red-500"
+                : "text-zinc-400 dark:text-zinc-500 group-focus-within:text-brand-600 dark:group-focus-within:text-brand-400"
             )}
           >
-            <Icon size={16} />
+            <Icon size={15} />
           </span>
         )}
 
@@ -124,11 +125,11 @@ const AuthInput = forwardRef(function AuthInput(
           aria-invalid={Boolean(error)}
           aria-describedby={error ? `${id}-error` : undefined}
           className={clsx(
-            "w-full py-2.5 bg-transparent text-sm text-zinc-900 dark:text-zinc-100 outline-none",
-            "placeholder:text-zinc-400 dark:placeholder:text-zinc-500 placeholder:transition-opacity placeholder:duration-200 focus:placeholder:opacity-50",
+            "w-full h-full bg-transparent text-[13.5px] text-zinc-900 dark:text-zinc-100 outline-none leading-normal",
+            "placeholder:text-zinc-400 dark:placeholder:text-zinc-500 placeholder:transition-opacity placeholder:duration-150 focus:placeholder:opacity-50",
             disabled && "cursor-not-allowed",
-            Icon ? "ps-2" : "ps-3.5",
-            isPassword ? "pe-11" : "pe-3.5"
+            Icon ? "ps-1.5" : "ps-3",
+            isPassword ? "pe-9" : "pe-3"
           )}
           {...props}
         />
@@ -142,7 +143,7 @@ const AuthInput = forwardRef(function AuthInput(
             onClick={togglePassword}
             aria-label={showPassword ? t("auth.password.hide") : t("auth.password.show")}
             aria-pressed={showPassword}
-            className="absolute end-1.5 w-8 h-8 inline-flex items-center justify-center rounded-lg text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
+            className="absolute end-1.5 w-7 h-7 inline-flex items-center justify-center rounded-lg text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
           >
             <AnimatePresence mode="wait" initial={false}>
               <motion.span

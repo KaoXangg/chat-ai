@@ -1,4 +1,5 @@
 export default {
+  "input.prompt": "Nhập câu hỏi của bạn…",
   "common.close": "Đóng",
 
   "toast.close": "Đóng thông báo",

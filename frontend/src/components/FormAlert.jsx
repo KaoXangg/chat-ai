@@ -25,14 +25,14 @@ export default function FormAlert({ message, tone = "error" }) {
           <div
             role={isError ? "alert" : "status"}
             className={clsx(
-              "mt-4 p-3 rounded-2xl border text-xs flex items-center gap-2",
+              "mt-2.5 p-2.5 rounded-xl border text-xs flex items-center gap-2",
               isError
                 ? "bg-red-500/10 border-red-500/20 text-red-600 dark:text-red-400"
                 : "bg-emerald-500/10 border-emerald-500/20 text-emerald-700 dark:text-emerald-400"
             )}
           >
-            <Icon size={15} className="shrink-0" />
-            <span>{message}</span>
+            <Icon size={14} className="shrink-0" />
+            <span className="leading-snug">{message}</span>
           </div>
         </motion.div>
       )}

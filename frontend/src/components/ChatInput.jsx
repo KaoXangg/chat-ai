@@ -134,7 +134,7 @@ export default function ChatInput({ onSend, isStreaming, disabled = false, onSto
   };
 
   return (
-    <div className="relative px-4 pb-5 pt-2">
+    <div className="chat-composer-shell relative px-4 pt-2">
       <div
         className="max-w-3xl mx-auto relative"
         onDragEnter={handleDragEnter}
@@ -193,8 +193,8 @@ export default function ChatInput({ onSend, isStreaming, disabled = false, onSto
 
         <div
           className={clsx(
-            "flex items-end gap-2 rounded-3xl glass border px-3 py-2.5 transition-all duration-300",
-            focused ? "border-brand-400/70 shadow-glow" : "border-edge-light dark:border-edge-dark"
+            "chat-composer",
+            focused && "is-focused"
           )}
         >
           <input
@@ -251,7 +251,7 @@ export default function ChatInput({ onSend, isStreaming, disabled = false, onSto
             disabled={disabled}
             rows={1}
             dir="auto"
-            placeholder={t("input.placeholder")}
+            placeholder={t("input.prompt")}
             className="flex-1 resize-none bg-transparent outline-none text-[15px] py-2 max-h-48 placeholder:text-black/40 dark:placeholder:text-white/40"
           />
           <Tooltip
@@ -284,7 +284,7 @@ export default function ChatInput({ onSend, isStreaming, disabled = false, onSto
                 whileTap={{ scale: 0.9 }}
                 onClick={handleSubmit}
                 disabled={(!value.trim() && images.length === 0) || disabled}
-                className="shrink-0 w-10 h-10 rounded-2xl bg-gradient-to-br from-brand-500 to-brand-600 disabled:opacity-30 text-white flex items-center justify-center"
+                className="shrink-0 w-10 h-10 rounded-xl bg-brand-600 hover:bg-brand-700 disabled:opacity-30 text-white flex items-center justify-center transition-colors"
                 aria-label={t("input.sendAria")}
               >
                 <Send size={16} />

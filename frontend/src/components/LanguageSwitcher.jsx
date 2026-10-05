@@ -210,32 +210,27 @@ export default function LanguageSwitcher({ mode = "full", align = "auto", classN
         aria-label={t("lang.button")}
         title={t("lang.button")}
         className={clsx(
-          "group inline-flex items-center gap-2 h-9 ps-1.5 pe-2.5 rounded-full text-zinc-700 dark:text-zinc-200",
-          "glass border shadow-sm outline-none transition-[border-color,box-shadow,background-color] duration-200",
-          "focus-visible:ring-2 focus-visible:ring-brand-500/40 active:scale-[0.98]",
+          "group inline-flex items-center gap-2 h-[34px] sm:h-9 px-2.5 sm:px-3 rounded-xl text-zinc-700 dark:text-zinc-200",
+          "border border-zinc-200/80 dark:border-zinc-800/80 bg-white/80 dark:bg-zinc-900/80 backdrop-blur-md",
+          "shadow-xs outline-none transition-[colors,border-color,box-shadow,transform] duration-150",
+          "focus-visible:ring-2 focus-visible:ring-brand-500/40 active:scale-95",
           open
-            ? "border-brand-500/50 shadow-[0_0_0_3px_rgba(109,91,255,0.14)]"
-            : "border-edge-light dark:border-edge-dark hover:border-brand-500/35"
+            ? "border-brand-500/60 shadow-[0_0_0_3px_rgba(109,91,255,0.14)] bg-white dark:bg-zinc-800/90"
+            : "hover:border-zinc-300 dark:hover:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800/60"
         )}
       >
         <span
           aria-hidden="true"
-          className="grid place-items-center w-6 h-6 rounded-full bg-brand-500/10 text-brand-500 transition-colors duration-200 group-hover:bg-brand-500/15"
+          className="grid place-items-center w-5 h-5 rounded-lg bg-brand-500/10 text-brand-600 dark:text-brand-400 transition-colors duration-200 group-hover:bg-brand-500/20"
         >
-          <Globe size={13} />
+          <Globe size={13} className="transition-transform duration-300 group-hover:rotate-12" />
         </span>
-        {mode === "ui" && current ? (
-          <>
-            <span dir="auto" className="hidden sm:inline text-[13px] font-medium max-w-[9rem] truncate">
-              {current.native}
-            </span>
-            <span className="sm:hidden text-xs font-semibold tracking-wide">{currentCode}</span>
-          </>
-        ) : (
-          <span className="text-xs font-semibold tracking-wide">{currentCode}</span>
-        )}
+        <span className="font-mono text-xs font-semibold tracking-wider text-zinc-800 dark:text-zinc-200 uppercase">
+          {currentCode}
+        </span>
+        <span className="w-[1px] h-3 bg-zinc-200 dark:bg-zinc-700" aria-hidden="true" />
         <ChevronDown
-          size={14}
+          size={13}
           aria-hidden="true"
           className={clsx(
             "text-zinc-400 dark:text-zinc-500 transition-transform duration-200",

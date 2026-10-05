@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { Mail, Lock, LogIn } from "lucide-react";
+import { Mail, Lock } from "lucide-react";
 import { useAuth } from "../context/AuthContext.jsx";
 import { REMEMBER_EMAIL_KEY, REMEMBER_ME_KEY, useAuthEmail } from "../context/AuthDraftContext.jsx";
 import AuthLayout from "../components/AuthLayout.jsx";
@@ -92,7 +92,6 @@ export default function Login() {
     <AuthLayout
       title={t("auth.login.title")}
       subtitle={t("auth.login.subtitle")}
-      iconBadge={LogIn}
       footer={
         <>
           <span>{t("auth.login.noAccount")}</span>{" "}
@@ -105,7 +104,7 @@ export default function Login() {
         </>
       }
     >
-      <form onSubmit={handleSubmit} className="space-y-4" noValidate>
+      <form onSubmit={handleSubmit} className="space-y-3" noValidate>
         {resetSuccess && (
           <Reveal i={1}>
             <FormAlert tone="success" message={t("auth.reset.success")} />
@@ -154,7 +153,7 @@ export default function Login() {
 
         <Reveal i={4}>
           <div className="flex items-center justify-between pt-0.5">
-            <AuthCheckbox checked={rememberMe} onChange={(e) => setRememberMe(e.target.checked)} disabled={locked}>
+            <AuthCheckbox id="login-remember" checked={rememberMe} onChange={(e) => setRememberMe(e.target.checked)} disabled={locked}>
               {t("auth.login.remember")}
             </AuthCheckbox>
 
