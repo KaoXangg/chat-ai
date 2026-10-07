@@ -74,6 +74,7 @@ BEGIN
         sources         NVARCHAR(MAX)  NULL, -- JSON array nguồn tìm kiếm web
         feedback        NVARCHAR(10)   NULL,
         isError         BIT            NOT NULL CONSTRAINT DF_Messages_isError DEFAULT (0),
+        interrupted     BIT            NOT NULL CONSTRAINT DF_Messages_interrupted DEFAULT (0),
         createdAt       DATETIME2      NOT NULL CONSTRAINT DF_Messages_createdAt DEFAULT (SYSUTCDATETIME()),
         updatedAt       DATETIME2      NOT NULL CONSTRAINT DF_Messages_updatedAt DEFAULT (SYSUTCDATETIME()),
         CONSTRAINT FK_Messages_Conversation FOREIGN KEY (conversationId) REFERENCES dbo.Conversations(id) ON DELETE CASCADE,
@@ -91,6 +92,7 @@ IF COL_LENGTH('dbo.Messages', 'imageBase64')   IS NULL ALTER TABLE dbo.Messages 
 IF COL_LENGTH('dbo.Messages', 'imageMimeType') IS NULL ALTER TABLE dbo.Messages ADD imageMimeType NVARCHAR(50)  NULL;
 IF COL_LENGTH('dbo.Messages', 'images')        IS NULL ALTER TABLE dbo.Messages ADD images        NVARCHAR(MAX) NULL;
 IF COL_LENGTH('dbo.Messages', 'sources')       IS NULL ALTER TABLE dbo.Messages ADD sources       NVARCHAR(MAX) NULL;
+IF COL_LENGTH('dbo.Messages', 'interrupted')   IS NULL ALTER TABLE dbo.Messages ADD interrupted BIT NOT NULL CONSTRAINT DF_Messages_interrupted DEFAULT (0);
 GO
 
 /* ---------- AIModels ---------- */

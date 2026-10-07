@@ -1,4 +1,5 @@
 export default {
+  "msg.interrupted": "Câu trả lời đã dừng giữa chừng.",
   "msg.imageAlt": "Ảnh đính kèm {n}",
   "msg.lightbox": "Xem ảnh lớn",
   "msg.prevImage": "Ảnh trước",

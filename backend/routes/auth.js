@@ -1,6 +1,7 @@
 import express from "express";
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
+import { Op, literal } from "sequelize";
 import User from "../models/User.js";
 import PasswordReset from "../models/PasswordReset.js";
 import { generateToken } from "../utils/generateToken.js";
@@ -23,12 +24,23 @@ function publicUser(user) {
   };
 }
 
+const OTP_TTL_MS = 10 * 60 * 1000; // mã sống 10 phút
+const OTP_MAX_ATTEMPTS = 5; // sai/thử quá 5 lần thì mã bị vô hiệu hóa
+const OTP_RESEND_COOLDOWN_MS = 60 * 1000; // tối thiểu 60s giữa 2 lần gửi mã cho cùng một tài khoản
+
 function generateOtp() {
-  return String(crypto.randomInt(100000, 999999));
+  // Cận trên của randomInt là exclusive nên phải là 1_000_000 để có thể ra 999999.
+  return String(crypto.randomInt(100000, 1000000));
 }
 
 function hashOtp(otp) {
   return crypto.createHash("sha256").update(otp).digest("hex");
+}
+
+function safeEqualHex(a, b) {
+  const bufA = Buffer.from(a, "hex");
+  const bufB = Buffer.from(b, "hex");
+  return bufA.length === bufB.length && crypto.timingSafeEqual(bufA, bufB);
 }
 
 router.post("/register", authLimiter, async (req, res, next) => {
@@ -184,13 +196,29 @@ router.post("/forgot-password", authLimiter, async (req, res, next) => {
 
     const user = await User.findOne({ where: { email: email.toLowerCase() } });
     if (user) {
-      const otp = generateOtp();
-      await PasswordReset.create({
-        userId: user.id,
-        otpHash: hashOtp(otp),
-        expiresAt: new Date(Date.now() + 10 * 60 * 1000),
+      const latest = await PasswordReset.findOne({
+        where: { userId: user.id, used: false },
+        order: [["createdAt", "DESC"]],
       });
-      sendOtpEmail(user.email, otp).catch((err) => console.error("[Mailer]", err.message));
+      // Chặn spam mail + chặn việc "đổi mã liên tục để có thêm lượt đoán".
+      // Nếu mã hiện tại đã bị khóa do thử quá nhiều lần thì cho phép xin mã mới ngay.
+      const tooSoon =
+        latest &&
+        latest.attempts < OTP_MAX_ATTEMPTS &&
+        Date.now() - latest.createdAt.getTime() < OTP_RESEND_COOLDOWN_MS;
+
+      if (!tooSoon) {
+        // Chỉ giữ đúng 1 mã còn hiệu lực cho mỗi user.
+        await PasswordReset.update({ used: true }, { where: { userId: user.id, used: false } });
+
+        const otp = generateOtp();
+        await PasswordReset.create({
+          userId: user.id,
+          otpHash: hashOtp(otp),
+          expiresAt: new Date(Date.now() + OTP_TTL_MS),
+        });
+        sendOtpEmail(user.email, otp).catch((err) => console.error("[Mailer]", err.message));
+      }
     }
 
     res.json({ success: true, data: { message: "Nếu email tồn tại trong hệ thống, mã xác nhận đã được gửi." } });
@@ -206,24 +234,44 @@ router.post("/reset-password", authLimiter, async (req, res, next) => {
       return res.status(400).json({ success: false, error: { code: "INVALID_INPUT", message: "Dữ liệu không hợp lệ." } });
     }
 
+    const invalidOtp = () =>
+      res.status(400).json({ success: false, error: { code: "INVALID_OTP", message: "Mã xác nhận không đúng hoặc đã hết hạn." } });
+    const lockedOtp = () =>
+      res.status(400).json({
+        success: false,
+        error: { code: "OTP_LOCKED", message: "Bạn đã nhập sai quá nhiều lần. Mã đã bị vô hiệu hóa, vui lòng yêu cầu mã mới." },
+      });
+
     const user = await User.findOne({ where: { email: email.toLowerCase() } });
-    if (!user) {
-      return res.status(400).json({ success: false, error: { code: "INVALID_OTP", message: "Mã xác nhận không đúng hoặc đã hết hạn." } });
-    }
+    if (!user) return invalidOtp();
 
     const reset = await PasswordReset.findOne({
       where: { userId: user.id, used: false },
       order: [["createdAt", "DESC"]],
     });
 
-    if (!reset || reset.expiresAt < new Date() || reset.otpHash !== hashOtp(otp)) {
-      return res.status(400).json({ success: false, error: { code: "INVALID_OTP", message: "Mã xác nhận không đúng hoặc đã hết hạn." } });
-    }
+    if (!reset || reset.expiresAt < new Date()) return invalidOtp();
+    if (reset.attempts >= OTP_MAX_ATTEMPTS) return lockedOtp();
+
+    // Tăng bộ đếm NGUYÊN TỬ ngay trong câu UPDATE (trước khi so mã). Điều kiện attempts < MAX nằm
+    // trong WHERE nên dù kẻ tấn công bắn song song nhiều request, tổng số lần so mã không vượt MAX.
+    const [claimed] = await PasswordReset.update(
+      { attempts: literal("attempts + 1") },
+      { where: { id: reset.id, used: false, attempts: { [Op.lt]: OTP_MAX_ATTEMPTS } } }
+    );
+    if (claimed === 0) return lockedOtp();
+
+    if (!safeEqualHex(reset.otpHash, hashOtp(String(otp).trim()))) return invalidOtp();
+
+    // Đánh dấu đã dùng nguyên tử: nếu 2 request đúng mã đến cùng lúc, chỉ 1 request thắng.
+    const [consumed] = await PasswordReset.update({ used: true }, { where: { id: reset.id, used: false } });
+    if (consumed === 0) return invalidOtp();
 
     user.passwordHash = await bcrypt.hash(newPassword, 10);
     await user.save();
-    reset.used = true;
-    await reset.save();
+
+    // Vô hiệu hóa mọi mã còn lại của user sau khi đổi mật khẩu thành công.
+    await PasswordReset.update({ used: true }, { where: { userId: user.id, used: false } });
 
     res.json({ success: true, data: { message: "Đặt lại mật khẩu thành công. Vui lòng đăng nhập." } });
   } catch (err) {

@@ -26,7 +26,8 @@ export class OpenRouterProvider extends AIProvider {
     return Boolean(this.apiKey);
   }
 
-  async *streamChat(messages, model = "openrouter/free") {
+  async *streamChat(messages, model = "openrouter/free", { signal } = {}) {
+    signal?.throwIfAborted();
     if (!this.isConfigured()) throw new Error("Chưa cấu hình OPENROUTER_API_KEY.");
 
     const selectedModel = RETIRED_FREE_MODELS.has(model) ? "openrouter/free" : model;
@@ -35,7 +36,7 @@ export class OpenRouterProvider extends AIProvider {
       model: selectedModel,
       messages: toOpenAIMessages(messages),
       stream: true,
-    });
+    }, { signal });
 
     let usage = null;
     for await (const chunk of stream) {
@@ -46,7 +47,7 @@ export class OpenRouterProvider extends AIProvider {
     if (usage) yield { usage: { promptTokens: usage.prompt_tokens, completionTokens: usage.completion_tokens } };
   }
 
-  async generateTitle(text) {
+  async generateTitle(text, { signal } = {}) {
     if (!this.isConfigured()) throw new Error("Chưa cấu hình OPENROUTER_API_KEY.");
     const completion = await this.client.chat.completions.create({
       model: "openrouter/free",
@@ -55,7 +56,7 @@ export class OpenRouterProvider extends AIProvider {
         { role: "user", content: text },
       ],
       temperature: 0.3,
-    });
+    }, { signal });
     return completion.choices?.[0]?.message?.content?.trim().replace(/^["']|["']$/g, "") || null;
   }
 }

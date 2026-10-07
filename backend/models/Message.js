@@ -66,6 +66,7 @@ const Message = sequelize.define(
       },
     },
     isError: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
+    interrupted: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
     _id: {
       type: DataTypes.VIRTUAL,
       get() {

@@ -10,6 +10,7 @@ import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import clsx from "clsx";
 import BrandMark from "./BrandMark.jsx";
+import AuthenticatedImage from "./AuthenticatedImage.jsx";
 import Tooltip from "./Tooltip.jsx";
 import UserAvatar from "./UserAvatar.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
@@ -59,7 +60,7 @@ SyntaxHighlighter.registerLanguage("php", php);
 /** Normalizes the legacy single-image fields and the new `images` array into one list of data URLs. */
 function getImages(message) {
   if (message.images?.length) {
-    return message.images.map((img) => `data:${img.mimeType};base64,${img.data}`);
+    return message.images.map((img) => img.url || `data:${img.mimeType};base64,${img.data}`);
   }
   if (message.imageBase64) {
     return [`data:${message.imageMimeType};base64,${message.imageBase64}`];
@@ -89,7 +90,7 @@ function ImageGrid({ images, onOpen }) {
             images.length === 1 ? "aspect-auto" : "aspect-square"
           )}
         >
-          <img src={src} alt={t("msg.imageAlt", { n: i + 1 })} className="w-full h-full object-cover" />
+          <AuthenticatedImage src={src} alt={t("msg.imageAlt", { n: i + 1 })} className="w-full h-full object-cover" />
         </button>
       ))}
     </div>
@@ -156,10 +157,8 @@ function Lightbox({ images, index, onClose, onNav }) {
         </>
       )}
 
-      <motion.img
+      <AuthenticatedImage
         key={index}
-        initial={{ opacity: 0, scale: 0.96 }}
-        animate={{ opacity: 1, scale: 1 }}
         src={images[index]}
         alt={t("msg.imageAlt", { n: index + 1 })}
         onClick={(e) => e.stopPropagation()}
@@ -549,6 +548,9 @@ export default function MessageBubble({ message, isLast, onRegenerate, onFeedbac
                   canRetry={isLast && !isStreaming && Boolean(onRetry)}
                   onRetry={() => onRetry(message)}
                 />
+              )}
+              {message.interrupted && !message.error && (
+                <p className="mt-2 text-xs opacity-60">{t("msg.interrupted")}</p>
               )}
             </>
           )}

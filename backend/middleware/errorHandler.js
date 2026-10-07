@@ -3,6 +3,19 @@ export function notFoundHandler(req, res) {
 }
 
 export function errorHandler(err, req, res, next) {
+  if (res.headersSent) return next(err);
+  if (["SequelizeValidationError", "SequelizeUniqueConstraintError"].includes(err.name)) {
+    return res.status(400).json({
+      success: false,
+      error: {
+        code: err.name === "SequelizeUniqueConstraintError" ? "DUPLICATE_VALUE" : "VALIDATION_ERROR",
+        message: err.name === "SequelizeUniqueConstraintError"
+          ? "Giá trị đã tồn tại. Vui lòng dùng giá trị khác."
+          : "Dữ liệu không hợp lệ. Vui lòng kiểm tra lại.",
+        fields: [...new Set((err.errors || []).map((item) => item.path).filter(Boolean))],
+      },
+    });
+  }
   console.error("[ERROR]", err);
   const status = err.status || 500;
   res.status(status).json({

@@ -264,11 +264,22 @@ export default function Chat() {
    * - onPreStreamError: xử lý riêng khi lỗi xảy ra TRƯỚC khi máy chủ bắt đầu stream
    *   (mặc định hiện thẻ lỗi với nút "Thử lại" = tạo lại câu trả lời).
    */
-  const buildHandlers = (assistantKey, { userKey, onPreStreamError } = {}) => ({
+  const buildHandlers = (assistantKey, { userKey, onPreStreamError, replacedClientKey } = {}) => ({
+    onStart: (data) => {
+      if (userKey && data.userMessageId) patchMessage(userKey, () => ({ _id: data.userMessageId }));
+    },
+    onStop: () => {
+      setMessages((prev) => prev
+        .filter((m) => m.clientKey !== assistantKey || m.content)
+        .map((m) => m.clientKey === assistantKey ? { ...m, interrupted: true } : m));
+      loadUsage();
+    },
     onToken: (token) => patchMessage(assistantKey, (m) => ({ content: m.content + token })),
     onDone: (data) => {
       setMessages((prev) =>
-        prev.map((m) => {
+        prev.filter((m) => (!data.replacedMessageId || m._id !== data.replacedMessageId)
+          && !(data.replacedAfterId != null && m.role === "assistant" && Number(m._id) > data.replacedAfterId && Number(m._id) <= Number(data.replacedMessageId))
+          && (!replacedClientKey || (m.clientKey || m._id) !== replacedClientKey)).map((m) => {
           if (m.clientKey === assistantKey) {
             return { ...m, _id: data.messageId, provider: data.provider, model: data.model || m.model, sources: data.sources || null, error: null };
           }
@@ -279,7 +290,7 @@ export default function Chat() {
       loadConversations(searchTerm);
       loadUsage();
     },
-    onError: (message, code, { preStream, userMessageId } = {}) => {
+    onError: (message, code, { preStream, userMessageId, messageId, interrupted } = {}) => {
       if (code === "QUOTA_EXCEEDED" || !preStream) loadUsage();
       if (preStream && onPreStreamError) {
         onPreStreamError(message, code);
@@ -287,7 +298,7 @@ export default function Chat() {
       }
       setMessages((prev) =>
         prev.map((m) => {
-          if (m.clientKey === assistantKey) return { ...m, error: { message, code, retry: "regenerate" } };
+          if (m.clientKey === assistantKey) return { ...m, _id: messageId || m._id, interrupted, error: { message, code, retry: "regenerate" } };
           if (userKey && userMessageId && m.clientKey === userKey) return { ...m, _id: userMessageId };
           return m;
         })
@@ -327,17 +338,26 @@ export default function Chat() {
   };
 
   const handleRegenerate = async () => {
-    if (!activeId || isStreaming || isSubmitting) return;
+    if (!activeId || sendLockRef.current || isStreaming || isSubmitting) return;
+    sendLockRef.current = true;
+    setIsSubmitting(true);
+    messageLoadVersionRef.current += 1;
     const assistantKey = newTempKey("tmp-a");
+    const previous = messages[messages.length - 1];
+    const replacedClientKey = previous?.role === "assistant" ? (previous.clientKey || previous._id) : null;
     setMessages((prev) => {
-      const base = prev[prev.length - 1]?.role === "assistant" ? prev.slice(0, -1) : prev;
+      const last = prev[prev.length - 1];
+      const base = last?.role === "assistant" && !last.content && String(last._id).startsWith("tmp-") ? prev.slice(0, -1) : prev;
       return [...base, { _id: assistantKey, clientKey: assistantKey, role: "assistant", content: "" }];
     });
 
     try {
-      await regenerate(activeId, buildHandlers(assistantKey));
+      await regenerate(activeId, buildHandlers(assistantKey, { replacedClientKey }));
     } catch (err) {
       toast.error(errorMessage(err, "chat.err.regenerate"));
+    } finally {
+      sendLockRef.current = false;
+      setIsSubmitting(false);
     }
   };
 

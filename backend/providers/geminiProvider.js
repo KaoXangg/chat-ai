@@ -24,7 +24,8 @@ export class GeminiProvider extends AIProvider {
     return Boolean(this.apiKey);
   }
 
-  async *streamChat(messages, model = "gemini-2.5-flash") {
+  async *streamChat(messages, model = "gemini-2.5-flash", { signal } = {}) {
+    signal?.throwIfAborted();
     if (!this.isConfigured()) throw new Error("Chưa cấu hình GEMINI_API_KEY.");
 
     const systemMsg = messages.find((m) => m.role === "system");
@@ -42,9 +43,11 @@ export class GeminiProvider extends AIProvider {
       }));
 
     const lastMessage = messages[messages.length - 1];
-    const chat = gModel.startChat({ history });
-
-    const result = await chat.sendMessageStream(buildParts(lastMessage));
+    const result = await gModel.generateContentStream({
+      contents: [...history, { role: "user", parts: buildParts(lastMessage) }],
+    }, { signal });
+    // The response promise can reject independently when the fetch is aborted.
+    result.response.catch(() => {});
 
     for await (const chunk of result.stream) {
       const token = chunk.text();
@@ -63,10 +66,10 @@ export class GeminiProvider extends AIProvider {
     }
   }
 
-  async generateTitle(text) {
+  async generateTitle(text, { signal } = {}) {
     if (!this.isConfigured()) throw new Error("Chưa cấu hình GEMINI_API_KEY.");
     const gModel = this.client.getGenerativeModel({ model: "gemini-2.5-flash" });
-    const result = await gModel.generateContent(`${TITLE_SYSTEM_PROMPT}\n\nMessage:\n${text}`);
+    const result = await gModel.generateContent(`${TITLE_SYSTEM_PROMPT}\n\nMessage:\n${text}`, { signal });
     return result.response.text()?.trim().replace(/^["']|["']$/g, "") || null;
   }
 }

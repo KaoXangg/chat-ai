@@ -3,7 +3,7 @@ export class AIProvider {
     this.name = name;
   }
 
-  async *streamChat(messages, model) {
+  async *streamChat(messages, model, { signal } = {}) {
     throw new Error(`Nhà cung cấp "${this.name}" chưa triển khai streamChat().`);
   }
 

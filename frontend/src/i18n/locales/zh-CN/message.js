@@ -1,4 +1,5 @@
 export default {
+  "msg.interrupted": "回答已中断。",
   "msg.imageAlt": "附件图片 {n}",
   "msg.lightbox": "图片查看器",
   "msg.prevImage": "上一张图片",

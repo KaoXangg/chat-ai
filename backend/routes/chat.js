@@ -13,6 +13,15 @@ import { aiLanguageDirective } from "../utils/languages.js";
 
 const router = express.Router();
 router.use(authMiddleware);
+router.use((req, res, next) => {
+  const controller = new AbortController();
+  req.chatSignal = controller.signal;
+  if (res.destroyed) controller.abort();
+  const abort = () => controller.abort();
+  res.once("close", abort);
+  res.once("finish", () => res.off("close", abort));
+  next();
+});
 
 const MAX_HISTORY_MESSAGES = 20;
 const MAX_IMAGE_BASE64_LENGTH = 9_000_000;
@@ -38,7 +47,7 @@ async function loadModelCatalog() {
 }
 
 function sseSend(res, data) {
-  res.write(`data: ${JSON.stringify(data)}\n\n`);
+  if (!res.destroyed && !res.writableEnded) res.write(`data: ${JSON.stringify(data)}\n\n`);
 }
 
 function jsonError(res, status, code, message) {
@@ -52,10 +61,10 @@ function normalizeImages(image, images) {
   return [];
 }
 
-async function buildHistory(conversationId, extraContext = "", aiLanguage = "auto") {
+async function buildHistory(conversationId, extraContext = "", aiLanguage = "auto", lastUserMessageId = null) {
   const history = await Message.findAll({
-    where: { conversationId },
-    order: [["createdAt", "DESC"]],
+    where: { conversationId, ...(lastUserMessageId ? { id: { [Op.lte]: lastUserMessageId } } : {}) },
+    order: [["createdAt", "DESC"], ["id", "DESC"]],
     limit: MAX_HISTORY_MESSAGES,
   });
   history.reverse();
@@ -79,16 +88,17 @@ async function buildHistory(conversationId, extraContext = "", aiLanguage = "aut
 }
 
 /** Tìm kiếm web (nếu được bật) và dựng đoạn ngữ cảnh gắn vào system prompt. */
-async function getWebContext(useWebSearch, query) {
+async function getWebContext(useWebSearch, query, signal) {
   if (!useWebSearch || !isWebSearchConfigured()) return { webSources: [], webContext: "" };
   try {
-    const webSources = await searchWeb(query);
+    const webSources = await searchWeb(query, 5, { signal });
     if (!webSources.length) return { webSources: [], webContext: "" };
     const webContext =
       "Dưới đây là thông tin tìm kiếm được trên web, hãy dùng để trả lời chính xác và trích dẫn nguồn theo dạng [số] khi phù hợp:\n\n" +
       webSources.map((s, i) => `[${i + 1}] ${s.title} (${s.url})\n${s.content}`).join("\n\n");
     return { webSources, webContext };
   } catch (err) {
+    if (signal?.aborted) throw err;
     console.error("[Web Search] Lỗi:", err.message);
     return { webSources: [], webContext: "" };
   }
@@ -99,7 +109,9 @@ async function getWebContext(useWebSearch, query) {
  * `userMessageId` (nếu có) được gửi kèm sự kiện `done`/`error` để client thay id tạm của tin nhắn người dùng
  * bằng id thật (cần cho tính năng sửa tin nhắn).
  */
-async function runStream(req, res, conversation, messagesForAI, { webSources = [], userMessageId = null } = {}) {
+async function runStream(req, res, conversation, messagesForAI, { webSources = [], userMessageId = null, replaceMessageId = null, replaceAfterId = null } = {}) {
+  const signal = req.chatSignal;
+  if (signal.aborted || res.destroyed) return;
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");
   res.setHeader("Connection", "keep-alive");
@@ -110,13 +122,16 @@ async function runStream(req, res, conversation, messagesForAI, { webSources = [
   let usedProvider = conversation.provider;
   let usedModel = conversation.model;
   let usage = null;
+  let assistantMessage = null;
+  let usageRecorded = false;
   const userId = userMessageId !== null && userMessageId !== undefined ? String(userMessageId) : undefined;
+  sseSend(res, { started: true, userMessageId: userId });
 
   try {
     const catalog = await loadModelCatalog();
     // Model mà người dùng đã dùng hết hạn mức token hôm nay sẽ bị router bỏ qua.
     const excludedModels = await getExhaustedModels(req.user.id, catalog);
-    for await (const item of streamWithFallback(messagesForAI, conversation.provider, conversation.model, { catalog, excludedModels })) {
+    for await (const item of streamWithFallback(messagesForAI, conversation.provider, conversation.model, { catalog, excludedModels, signal })) {
       usedProvider = item.provider;
       usedModel = item.model;
       if (item.usage) {
@@ -127,17 +142,28 @@ async function runStream(req, res, conversation, messagesForAI, { webSources = [
       sseSend(res, { token: item.token });
     }
 
-    const assistantMessage = await Message.create({
-      conversationId: conversation.id,
-      role: "assistant",
-      content: fullResponse,
-      provider: usedProvider,
-      model: usedModel,
-      sources: webSources.length ? webSources : null,
+    signal.throwIfAborted();
+    assistantMessage = await sequelize.transaction(async (transaction) => {
+      const replacement = await Message.create({
+        conversationId: conversation.id,
+        role: "assistant",
+        content: fullResponse,
+        provider: usedProvider,
+        model: usedModel,
+        sources: webSources.length ? webSources : null,
+      }, { transaction });
+      if (replaceMessageId) {
+        await Message.destroy({
+          where: { conversationId: conversation.id, role: "assistant", id: { [Op.gt]: replaceAfterId, [Op.lte]: replaceMessageId } },
+          transaction,
+        });
+      }
+      await conversation.save({ transaction });
+      return replacement;
     });
 
-    await conversation.save();
     await recordUsage({ userId: req.user.id, provider: usedProvider, modelId: usedModel, usage });
+    usageRecorded = true;
 
     sseSend(res, {
       done: true,
@@ -146,42 +172,48 @@ async function runStream(req, res, conversation, messagesForAI, { webSources = [
       provider: usedProvider,
       model: usedModel,
       sources: assistantMessage.sources,
+      replacedMessageId: replaceMessageId ? String(replaceMessageId) : undefined,
+      replacedAfterId: replaceMessageId ? replaceAfterId : undefined,
     });
   } catch (err) {
-    console.error("[Chat Stream] Lỗi:", err.message);
+    const interrupted = signal.aborted || err.name === "AbortError";
+    if (!interrupted) console.error("[Chat Stream] Lỗi:", err.message);
     // Câu trả lời dở dang vẫn đã tiêu tốn token -> ghi nhận bản ước lượng.
-    if (err.usage) {
-      await recordUsage({ userId: req.user.id, provider: err.provider || usedProvider, modelId: err.model || usedModel, usage: err.usage });
+    if (!usageRecorded && (err.usage || usage)) {
+      await recordUsage({ userId: req.user.id, provider: err.provider || usedProvider, modelId: err.model || usedModel, usage: err.usage || usage });
     }
-    if (fullResponse) {
+    if (fullResponse && !assistantMessage) {
       try {
-        await Message.create({
+        assistantMessage = await Message.create({
           conversationId: conversation.id,
           role: "assistant",
           content: fullResponse,
           provider: usedProvider,
           model: usedModel,
-          isError: true,
+          isError: !interrupted,
+          interrupted: true,
+          sources: webSources.length ? webSources : null,
         });
       } catch (saveErr) {
         console.error("[Chat Stream] Không thể lưu câu trả lời dở dang:", saveErr.message);
       }
     }
+    if (interrupted) return;
     const code = STREAM_ERROR_MESSAGES[err.code] ? err.code : AI_ERROR_CODES.PROVIDER_UNAVAILABLE;
     const message =
       code === AI_ERROR_CODES.QUOTA_EXCEEDED
         ? `${STREAM_ERROR_MESSAGES[code]} Hạn mức làm mới lúc 00:00 (${getTzLabel()}); bạn cũng có thể chọn mô hình khác.`
         : STREAM_ERROR_MESSAGES[code];
-    sseSend(res, { error: message, code, userMessageId: userId });
+    sseSend(res, { error: message, code, userMessageId: userId, messageId: assistantMessage?._id, interrupted: Boolean(fullResponse) });
   } finally {
-    res.end();
+    if (!res.destroyed && !res.writableEnded) res.end();
   }
 }
 
 router.post("/:conversationId/stream", chatLimiter, async (req, res, next) => {
   try {
     const { content, image, images, useWebSearch } = req.body;
-    if (!content || !content.trim()) {
+    if (typeof content !== "string" || !content.trim()) {
       return jsonError(res, 400, "EMPTY_MESSAGE", "Nội dung không được để trống.");
     }
     if (content.length > MAX_MESSAGE_LENGTH) {
@@ -221,15 +253,16 @@ router.post("/:conversationId/stream", chatLimiter, async (req, res, next) => {
     });
 
     if (["Cuoc tro chuyen moi", "Cuộc trò chuyện mới"].includes(conversation.title)) {
-      conversation.title = await generateConversationTitle(content.trim());
+      conversation.title = await generateConversationTitle(content.trim(), { signal: req.chatSignal });
       // Lưu ngay để tiêu đề không bị mất nếu lượt trả lời sau đó gặp lỗi.
       await conversation.save();
     }
 
-    const { webSources, webContext } = await getWebContext(useWebSearch, content.trim());
+    const { webSources, webContext } = await getWebContext(useWebSearch, content.trim(), req.chatSignal);
     const messagesForAI = await buildHistory(conversation.id, webContext, req.user.aiLanguage);
     await runStream(req, res, conversation, messagesForAI, { webSources, userMessageId: userMessage.id });
   } catch (err) {
+    if (req.chatSignal.aborted) return;
     next(err);
   }
 });
@@ -241,13 +274,12 @@ router.post("/:conversationId/regenerate", chatLimiter, async (req, res, next) =
       return jsonError(res, 404, "NOT_FOUND", "Không tìm thấy cuộc trò chuyện.");
     }
 
-    const lastMessage = await Message.findOne({ where: { conversationId: conversation.id }, order: [["createdAt", "DESC"]] });
-    if (lastMessage && lastMessage.role === "assistant") {
-      await lastMessage.destroy();
-    }
-
-    const messagesForAI = await buildHistory(conversation.id, "", req.user.aiLanguage);
-    await runStream(req, res, conversation, messagesForAI);
+    const lastMessage = await Message.findOne({ where: { conversationId: conversation.id }, order: [["createdAt", "DESC"], ["id", "DESC"]] });
+    const lastUserMessage = await Message.findOne({ where: { conversationId: conversation.id, role: "user" }, order: [["createdAt", "DESC"], ["id", "DESC"]] });
+    if (!lastUserMessage) return jsonError(res, 400, "EMPTY_MESSAGE", "Không có tin nhắn để tạo lại câu trả lời.");
+    const replaceMessageId = lastMessage?.role === "assistant" && lastMessage.id > lastUserMessage.id ? lastMessage.id : null;
+    const messagesForAI = await buildHistory(conversation.id, "", req.user.aiLanguage, lastUserMessage.id);
+    await runStream(req, res, conversation, messagesForAI, { replaceMessageId, replaceAfterId: lastUserMessage.id });
   } catch (err) {
     next(err);
   }
@@ -287,7 +319,7 @@ router.post("/:conversationId/edit/:messageId", chatLimiter, async (req, res, ne
       await target.save({ transaction });
     });
 
-    const { webSources, webContext } = await getWebContext(req.body.useWebSearch, content);
+    const { webSources, webContext } = await getWebContext(req.body.useWebSearch, content, req.chatSignal);
     const messagesForAI = await buildHistory(conversation.id, webContext, req.user.aiLanguage);
     await runStream(req, res, conversation, messagesForAI, { webSources, userMessageId: target.id });
   } catch (err) {

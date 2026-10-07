@@ -1,4 +1,5 @@
 export default {
+  "msg.interrupted": "Response interrupted.",
   "msg.imageAlt": "Attached image {n}",
   "msg.lightbox": "Image viewer",
   "msg.prevImage": "Previous image",

@@ -1,4 +1,5 @@
 export default {
+  "msg.interrupted": "応答が途中で停止しました。",
   "msg.imageAlt": "添付画像 {n}",
   "msg.lightbox": "画像ビューア",
   "msg.prevImage": "前の画像",

@@ -129,7 +129,8 @@ export function buildAttempts({ preferredProvider, preferredModel, catalog = [],
  *  - { token, provider, model }  : một đoạn văn bản
  *  - { usage, provider, model }  : số token của lượt trả lời (phát đúng 1 lần ở cuối; `estimated: true` nếu tự ước lượng)
  */
-export async function* streamWithFallback(messages, preferredProvider = "groq", model, { catalog = [], excludedModels = new Set() } = {}) {
+export async function* streamWithFallback(messages, preferredProvider = "groq", model, { catalog = [], excludedModels = new Set(), signal } = {}) {
+  signal?.throwIfAborted();
   const lastMessage = messages[messages.length - 1];
   const needsVision = Boolean(lastMessage?.images?.length || lastMessage?.image);
 
@@ -139,6 +140,7 @@ export async function* streamWithFallback(messages, preferredProvider = "groq", 
   let ranAny = false;
 
   for (const attempt of attempts) {
+    signal?.throwIfAborted();
     const { providerName, model: usedModel, contextLength } = attempt;
 
     if ((cooldownUntil[providerName] || 0) > Date.now()) {
@@ -163,21 +165,31 @@ export async function* streamWithFallback(messages, preferredProvider = "groq", 
     let providerUsage = null;
     ranAny = true;
     try {
-      for await (const chunk of providers[providerName].streamChat(trimmed.messages, usedModel)) {
+      for await (const chunk of providers[providerName].streamChat(trimmed.messages, usedModel, { signal })) {
+        signal?.throwIfAborted();
         if (typeof chunk !== "string") {
           if (chunk?.usage) providerUsage = chunk.usage;
           continue;
         }
+        if (!chunk) continue;
         hasYielded = true;
         streamedChars += chunk.length;
         yield { token: chunk, provider: providerName, model: usedModel };
       }
+      signal?.throwIfAborted();
       if (hasYielded) {
         yield { usage: providerUsage || estimateUsage(streamedChars), provider: providerName, model: usedModel };
         return;
       }
       errors.push(`${providerName}: không trả về dữ liệu`);
     } catch (err) {
+      if (signal?.aborted || err.name === "AbortError") {
+        // Never start a fallback or put a provider on cooldown after Stop.
+        err.usage = streamedChars ? estimateUsage(streamedChars) : null;
+        err.provider = providerName;
+        err.model = usedModel;
+        throw err;
+      }
       console.error(`[AI Router] Nhà cung cấp "${providerName}" gặp lỗi:`, err.message);
       // Đã gửi một phần câu trả lời cho client -> không chuyển provider khác (sẽ bị nối trùng nội dung).
       if (hasYielded) {
@@ -200,16 +212,18 @@ export async function* streamWithFallback(messages, preferredProvider = "groq", 
   throw error;
 }
 
-export async function generateConversationTitle(text) {
+export async function generateConversationTitle(text, { signal } = {}) {
   const fallbackTitle = text.length > 60 ? `${text.slice(0, 57)}...` : text;
 
   for (const name of TITLE_CHAIN) {
+    signal?.throwIfAborted();
     const provider = providers[name];
     if (!provider || !provider.isConfigured()) continue;
     try {
-      const title = await provider.generateTitle(text);
+      const title = await provider.generateTitle(text, { signal });
       if (title) return title.slice(0, 120);
     } catch (err) {
+      if (signal?.aborted || err.name === "AbortError") throw err;
       console.error(`[AI Router] Không thể tạo tiêu đề bằng "${name}":`, err.message);
     }
   }

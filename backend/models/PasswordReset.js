@@ -9,6 +9,7 @@ const PasswordReset = sequelize.define(
     otpHash: { type: DataTypes.STRING(255), allowNull: false },
     expiresAt: { type: DataTypes.DATE, allowNull: false },
     used: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
+    attempts: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
   },
   {
     tableName: "PasswordResets",

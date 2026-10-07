@@ -27,6 +27,12 @@ export const sequelize = new Sequelize(
  */
 async function ensureSchemaUpdates() {
   await sequelize.query(`
+    IF OBJECT_ID('dbo.Messages', 'U') IS NOT NULL AND COL_LENGTH('dbo.Messages', 'interrupted') IS NULL
+    BEGIN
+      ALTER TABLE dbo.Messages ADD interrupted BIT NOT NULL CONSTRAINT DF_Messages_interrupted DEFAULT (0);
+    END
+  `);
+  await sequelize.query(`
     IF OBJECT_ID('dbo.AIModels', 'U') IS NOT NULL AND COL_LENGTH('dbo.AIModels', 'dailyTokenLimit') IS NULL
     BEGIN
       ALTER TABLE dbo.AIModels ADD dailyTokenLimit INT NOT NULL CONSTRAINT DF_AIModels_dailyTokenLimit DEFAULT (0);

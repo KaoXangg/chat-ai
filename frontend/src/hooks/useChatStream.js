@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import api from "../api/axios.js";
 import { useI18n } from "../i18n/I18nContext.jsx";
 
@@ -23,6 +23,7 @@ export function useChatStream() {
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamError, setStreamError] = useState(null);
   const abortRef = useRef(null);
+  useEffect(() => () => abortRef.current?.abort(), []);
 
   // runSSE là useCallback([]) nên dùng ref để luôn lấy hàm dịch theo ngôn ngữ giao diện hiện tại.
   const tRef = useRef(t);
@@ -36,7 +37,7 @@ export function useChatStream() {
     return serverMessage || tRef.current("error.generic");
   };
 
-  const runSSE = useCallback(async (url, body, { onToken, onDone, onError } = {}) => {
+  const runSSE = useCallback(async (url, body, { onToken, onDone, onError, onStart, onStop } = {}) => {
     setIsStreaming(true);
     setStreamError(null);
 
@@ -107,6 +108,7 @@ export function useChatStream() {
             continue;
           }
 
+          if (data.started) onStart?.(data);
           if (data.token) onToken?.(data.token);
           if (data.error) {
             finished = true;
@@ -114,7 +116,7 @@ export function useChatStream() {
             const serverMessage = typeof data.error === "string" ? data.error : data.error?.message;
             const message = messageForCode(code, serverMessage);
             setStreamError(message);
-            onError?.(message, code, { preStream: false, userMessageId: data.userMessageId });
+            onError?.(message, code, { preStream: false, userMessageId: data.userMessageId, messageId: data.messageId, interrupted: data.interrupted });
           }
           if (data.done) {
             finished = true;
@@ -130,7 +132,9 @@ export function useChatStream() {
         onError?.(message, "NETWORK_ERROR", { preStream: false });
       }
     } catch (err) {
-      if (err.name !== "AbortError") {
+      if (controller.signal.aborted) {
+        onStop?.();
+      } else {
         const preStream = !started;
         const isRequestError = err instanceof StreamRequestError;
         const code = isRequestError ? err.code : "NETWORK_ERROR";
@@ -142,6 +146,7 @@ export function useChatStream() {
         onError?.(message, code, { preStream });
       }
     } finally {
+      if (abortRef.current === controller) abortRef.current = null;
       setIsStreaming(false);
     }
   }, []);

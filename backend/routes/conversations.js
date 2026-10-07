@@ -1,5 +1,5 @@
 import express from "express";
-import { Op } from "sequelize";
+import { Op, literal } from "sequelize";
 import Conversation from "../models/Conversation.js";
 import Message from "../models/Message.js";
 import { authMiddleware } from "../middleware/auth.js";
@@ -47,8 +47,47 @@ router.get("/:id/messages", async (req, res, next) => {
     if (!conversation) {
       return res.status(404).json({ success: false, error: { code: "NOT_FOUND", message: "Không tìm thấy cuộc trò chuyện." } });
     }
-    const messages = await Message.findAll({ where: { conversationId: conversation.id }, order: [["createdAt", "ASC"]] });
+    const rows = await Message.findAll({
+      where: { conversationId: conversation.id },
+      attributes: {
+        exclude: ["imageBase64", "images"],
+        include: [[literal(`COALESCE(NULLIF((SELECT COUNT(*) FROM OPENJSON(CASE WHEN ISJSON([images]) = 1 THEN [images] ELSE N'[]' END)), 0), CASE WHEN [imageBase64] IS NOT NULL THEN 1 ELSE 0 END)`), "imageCount"]],
+      },
+      order: [["createdAt", "ASC"], ["id", "ASC"]],
+    });
+    const messages = rows.map((row) => {
+      const message = row.toJSON();
+      const count = Number(message.imageCount) || 0;
+      // These URLs require the same bearer authentication as the message list.
+      message.images = Array.from({ length: count }, (_, index) => ({
+        url: `/conversations/${conversation.id}/messages/${message.id}/images/${index}`,
+      }));
+      delete message.imageBase64;
+      return message;
+    });
     res.json({ success: true, data: { conversation, messages } });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get("/:id/messages/:messageId/images/:index", async (req, res, next) => {
+  try {
+    const index = Number(req.params.index);
+    if (!/^\d+$/.test(req.params.index) || !Number.isSafeInteger(index) || index > 3) {
+      return res.status(400).json({ success: false, error: { code: "INVALID_IMAGE", message: "Ảnh không hợp lệ." } });
+    }
+    const conversation = await Conversation.findOne({ where: { id: req.params.id, userId: req.user.id } });
+    const message = conversation && await Message.findOne({ where: { id: req.params.messageId, conversationId: conversation.id } });
+    const images = message?.images?.length ? message.images : message?.imageBase64
+      ? [{ mimeType: message.imageMimeType, data: message.imageBase64 }] : [];
+    const image = images[index];
+    if (!image?.data || !/^image\/(png|jpeg|jpg|gif|webp|heic|heif|avif)$/i.test(image.mimeType)) {
+      return res.status(404).json({ success: false, error: { code: "NOT_FOUND", message: "Không tìm thấy ảnh." } });
+    }
+    res.setHeader("Cache-Control", "private, no-store");
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.type(image.mimeType).send(Buffer.from(image.data, "base64"));
   } catch (err) {
     next(err);
   }
