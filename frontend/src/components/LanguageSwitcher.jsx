@@ -27,7 +27,7 @@ function Row({ selected, onClick, primary, secondary, badge, icon, dir }) {
       tabIndex={-1}
       onClick={onClick}
       className={clsx(
-        "w-full flex items-center gap-3 px-2.5 py-2 rounded-xl text-start outline-none",
+        "w-full flex items-center gap-3 px-2.5 py-2 rounded-xl text-start outline-hidden",
         "transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-brand-500/40",
         selected
           ? "bg-brand-500/10 text-brand-700 dark:text-brand-200"
@@ -39,7 +39,7 @@ function Row({ selected, onClick, primary, secondary, badge, icon, dir }) {
         className={clsx(
           "grid place-items-center w-8 h-8 shrink-0 rounded-[10px] text-[11px] font-semibold leading-none tracking-wide transition-colors duration-150",
           selected
-            ? "bg-brand-500 text-white shadow-sm shadow-brand-500/30"
+            ? "bg-brand-500 text-white shadow-xs shadow-brand-500/30"
             : "bg-black/[0.05] dark:bg-white/[0.08] text-zinc-500 dark:text-zinc-400"
         )}
       >
@@ -212,7 +212,7 @@ export default function LanguageSwitcher({ mode = "full", align = "auto", classN
         className={clsx(
           "group inline-flex items-center gap-2 h-[34px] sm:h-9 px-2.5 sm:px-3 rounded-xl text-zinc-700 dark:text-zinc-200",
           "border border-zinc-200/80 dark:border-zinc-800/80 bg-white/80 dark:bg-zinc-900/80 backdrop-blur-md",
-          "shadow-xs outline-none transition-[colors,border-color,box-shadow,transform] duration-150",
+          "shadow-xs outline-hidden transition-[colors,border-color,box-shadow,transform] duration-150",
           "focus-visible:ring-2 focus-visible:ring-brand-500/40 active:scale-95",
           open
             ? "border-brand-500/60 shadow-[0_0_0_3px_rgba(109,91,255,0.14)] bg-white dark:bg-zinc-800/90"
@@ -269,7 +269,7 @@ export default function LanguageSwitcher({ mode = "full", align = "auto", classN
                       setQuery("");
                     }}
                     className={clsx(
-                      "relative flex-1 py-1.5 text-xs font-medium rounded-lg outline-none transition-colors duration-200",
+                      "relative flex-1 py-1.5 text-xs font-medium rounded-lg outline-hidden transition-colors duration-200",
                       "focus-visible:ring-2 focus-visible:ring-brand-500/40",
                       tab === id
                         ? "text-brand-700 dark:text-brand-200"
@@ -280,7 +280,7 @@ export default function LanguageSwitcher({ mode = "full", align = "auto", classN
                       <motion.span
                         layoutId={`lang-tab-${tabPillId}`}
                         transition={{ type: "spring", stiffness: 420, damping: 34 }}
-                        className="absolute inset-0 rounded-lg bg-white dark:bg-white/10 shadow-sm"
+                        className="absolute inset-0 rounded-lg bg-white dark:bg-white/10 shadow-xs"
                       />
                     )}
                     <span className="relative">{label}</span>
@@ -310,7 +310,7 @@ export default function LanguageSwitcher({ mode = "full", align = "auto", classN
                     }}
                     placeholder={t("lang.search")}
                     aria-label={t("lang.search")}
-                    className="w-full ps-9 pe-3 py-2 rounded-xl border border-edge-light dark:border-edge-dark bg-white/60 dark:bg-white/5 outline-none focus:border-brand-400 focus:shadow-[0_0_0_3px_rgba(109,91,255,0.14)] text-xs transition-[border-color,box-shadow] duration-200"
+                    className="w-full ps-9 pe-3 py-2 rounded-xl border border-edge-light dark:border-edge-dark bg-white/60 dark:bg-white/5 outline-hidden focus:border-brand-400 focus:shadow-[0_0_0_3px_rgba(109,91,255,0.14)] text-xs transition-[border-color,box-shadow] duration-200"
                   />
                 </div>
               </>

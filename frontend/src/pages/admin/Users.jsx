@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { Search, ShieldBan, ShieldCheck, Trash2, ShieldPlus, ChevronLeft, ChevronRight } from "lucide-react";
 import api from "../../api/axios.js";
 import { TableRowSkeleton, CardRowSkeleton } from "../../components/Skeleton.jsx";
@@ -83,6 +83,8 @@ export default function AdminUsers() {
   const [roleFilter, setRoleFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [loading, setLoading] = useState(true);
+  const [refresh, setRefresh] = useState(0);
+  const loadVersionRef = useRef(0);
   const [selectedUserId, setSelectedUserId] = useState(null);
   const toast = useToast();
   const confirm = useConfirm();
@@ -90,6 +92,7 @@ export default function AdminUsers() {
 
   const load = useCallback(
     async (opts = {}) => {
+      const version = ++loadVersionRef.current;
       setLoading(true);
       try {
         const res = await api.get("/admin/users", {
@@ -101,27 +104,29 @@ export default function AdminUsers() {
             limit: PAGE_SIZE,
           },
         });
+        if (version !== loadVersionRef.current) return;
+        const lastPage = Math.max(1, Math.ceil(res.data.data.total / PAGE_SIZE));
+        setPage((current) => Math.min(current, lastPage));
         setUsers(res.data.data.users);
         setTotal(res.data.data.total);
       } catch (err) {
-        toast.error(errorMessage(err, "admin.users.err.load"));
+        if (version === loadVersionRef.current) toast.error(errorMessage(err, "admin.users.err.load"));
       } finally {
-        setLoading(false);
+        if (version === loadVersionRef.current) setLoading(false);
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [search, roleFilter, statusFilter, page]
+    [search, roleFilter, statusFilter, page, refresh]
   );
 
   useEffect(() => {
     load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, roleFilter, statusFilter]);
+    return () => { loadVersionRef.current += 1; };
+  }, [load]);
 
   const handleSearchChange = (value) => {
     setSearch(value);
     setPage(1);
-    load({ search: value, page: 1 });
   };
 
   const toggleBan = async (user) => {
@@ -158,8 +163,7 @@ export default function AdminUsers() {
     if (!ok) return false;
     try {
       await api.delete(`/admin/users/${user._id}`);
-      setUsers((prev) => prev.filter((u) => u._id !== user._id));
-      setTotal((n) => Math.max(0, n - 1));
+      setRefresh((value) => value + 1);
       toast.success(t("admin.users.removed", { name: user.username }));
       return true;
     } catch (err) {
@@ -188,7 +192,7 @@ export default function AdminUsers() {
             value={search}
             onChange={(e) => handleSearchChange(e.target.value)}
             placeholder={t("admin.users.searchPlaceholder")}
-            className="bg-transparent outline-none text-sm flex-1"
+            className="bg-transparent outline-hidden text-sm flex-1"
           />
         </div>
 
@@ -199,7 +203,7 @@ export default function AdminUsers() {
             setRoleFilter(e.target.value);
             setPage(1);
           }}
-          className="px-3 py-2 rounded-2xl glass border border-edge-light dark:border-edge-dark text-sm outline-none"
+          className="px-3 py-2 rounded-2xl glass border border-edge-light dark:border-edge-dark text-sm outline-hidden"
         >
           <option value="">{t("admin.users.allRoles")}</option>
           <option value="admin">Admin</option>
@@ -213,7 +217,7 @@ export default function AdminUsers() {
             setStatusFilter(e.target.value);
             setPage(1);
           }}
-          className="px-3 py-2 rounded-2xl glass border border-edge-light dark:border-edge-dark text-sm outline-none"
+          className="px-3 py-2 rounded-2xl glass border border-edge-light dark:border-edge-dark text-sm outline-hidden"
         >
           <option value="">{t("admin.users.allStatuses")}</option>
           <option value="active">{t("admin.users.statusActive")}</option>

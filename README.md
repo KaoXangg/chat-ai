@@ -62,8 +62,8 @@ Hai vai trò: `user` và `admin`.
 
 | Lớp | Công nghệ |
 |---|---|
-| Frontend | React 18, Vite 5, React Router, Axios |
-| Giao diện | Tailwind CSS, Framer Motion, Lucide React |
+| Frontend | React 18, Vite 7, React Router 7, Axios |
+| Giao diện | Tailwind CSS 4, Framer Motion, Lucide React |
 | Biểu đồ | Recharts |
 | Nội dung chat | React Markdown, remark-gfm, remark-math, KaTeX, syntax highlighting |
 | Backend | Node.js, Express 4 |
@@ -98,7 +98,7 @@ chat-ai/
 │   ├── providers/          # Tích hợp và định tuyến AI providers
 │   ├── routes/             # API auth, chat, conversations, admin, models
 │   ├── sql/
-│   │   └── schema.sql      # Cấu trúc database
+│   │   └── schema.sql      # Cấu trúc database, nâng cấp DB cũ và hạn mức token
 │   ├── utils/              # Tiện ích token, email, avatar...
 │   ├── .env.example        # Mẫu biến môi trường
 │   ├── package.json
@@ -115,6 +115,9 @@ chat-ai/
 │   ├── .env.example
 │   ├── package.json
 │   └── vite.config.js
+├── scripts/
+│   └── start-project.mjs   # Chạy và dừng hai server trong một terminal
+├── start-project.bat       # Launcher Windows
 ├── .editorconfig
 ├── .gitignore
 └── README.md
@@ -122,13 +125,25 @@ chat-ai/
 
 ## Yêu cầu hệ thống
 
-- Node.js >= 18 và npm
+- Node.js 22.12 trở lên trong nhánh 22, hoặc Node.js >= 24, và npm
 - Microsoft SQL Server và SSMS, đã bật **SQL Server Authentication (Mixed Mode)** nếu dùng tài khoản SQL
 - API key của **ít nhất một** nhà cung cấp AI (Groq, Gemini hoặc OpenRouter)
 - Tài khoản SMTP (tùy chọn, chỉ cần khi dùng chức năng quên/đặt lại mật khẩu qua email)
 - Git và trình duyệt hiện đại
 
 ## Cài đặt và chạy dự án
+
+### Chạy nhanh trên Windows bằng file BAT
+
+Sau khi cài Node.js và cấu hình SQL Server cùng `backend/.env`, nhấp đúp **`start-project.bat`** ở thư mục gốc. Không cần mở VS Code.
+
+Launcher tự cài dependency bằng `npm ci` nếu chưa có, chạy backend/frontend chung **một cửa sổ terminal**, đợi hai server sẵn sàng rồi mở `http://localhost:5173`. Giữ cửa sổ này mở khi sử dụng. SQL Server cần đang chạy. Lần đầu vẫn cần tạo database và chạy seed theo hướng dẫn bên dưới; launcher không tự seed hoặc thay mật khẩu.
+
+Backend mặc định chỉ hiện trạng thái sẵn sàng và lỗi, không in toàn bộ SQL hoặc từng HTTP request. Khi cần kiểm tra chi tiết, đặt `DB_LOG_SQL=true` hoặc `HTTP_LOG_REQUESTS=true` trong `backend/.env` rồi khởi động lại backend.
+
+Nếu thiếu `backend/.env`, launcher tạo bản mẫu rồi dừng để bạn điền cấu hình. Nếu thiếu `frontend/.env`, launcher tạo cấu hình mẫu. Khi đổi `PORT` của backend, cập nhật `VITE_API_URL` trong cấu hình frontend cho khớp; `CLIENT_URL` của backend cần cho phép `http://localhost:5173`.
+
+Để dừng dự án, nhấn **Ctrl+C** trong cửa sổ terminal chung; launcher sẽ dừng cả backend và frontend. Nếu một server lỗi và thoát, launcher cũng dừng server còn lại. Nếu chạy launcher lần nữa trong khi server đang chạy, nó sẽ báo cổng đang được sử dụng. Có thể chạy `start-project.bat --check` để kiểm tra Node.js, dependency và các cấu hình backend bắt buộc mà không mở server/trình duyệt hoặc cài dependency; lệnh này không kiểm tra kết nối SQL Server hay API key.
 
 ### 1. Clone
 
@@ -147,7 +162,7 @@ CREATE DATABASE chat_ai;
 
 Chọn database `chat_ai`, sau đó mở và thực thi (F5) file `backend/sql/schema.sql` để tạo cấu trúc bảng.
 
-> Nếu dự án có migration bổ sung, hãy chạy theo hướng dẫn tương ứng trước khi khởi động backend.
+Backend tự bổ sung các cột và index tương thích khi khởi động, gồm `PasswordResets.attempts`, `Users.tokenVersion` và `Messages.requestId`. Tài khoản database cần quyền thay đổi schema cho bước này; có thể chạy `backend/sql/schema.sql` trước bằng tài khoản quản trị database.
 
 ### 3. Chạy Backend
 
@@ -163,6 +178,8 @@ Sửa giá trị trong `backend/.env` (xem mục [Biến môi trường](#biến
 npm run seed              # Khởi tạo dữ liệu ban đầu (chạy lần đầu)
 npm run dev
 ```
+
+Sau khi seed lần đầu, chạy lại `backend/sql/schema.sql` trong SSMS để áp dụng hạn mức token cho danh sách model vừa tạo.
 
 API chạy tại `http://localhost:5000`, kiểm tra tại `http://localhost:5000/api/health`.
 
@@ -187,6 +204,10 @@ Kiểm tra giá trị API base URL trong `frontend/.env` theo `frontend/.env.exa
 | `backend` | `npm run seed` | Khởi tạo dữ liệu ban đầu (tài khoản admin, danh sách model) |
 | `frontend` | `npm run dev` | Chạy Vite dev server |
 | `frontend` | `npm run build` | Build frontend ra thư mục `dist/` |
+| `backend` | `npm test` | Kiểm thử API, xác thực và các tình huống lỗi chat bằng dữ liệu giả |
+| `frontend` | `npm test` | Build production và kiểm thử trình duyệt bằng Playwright |
+
+Kiểm thử trình duyệt dùng Chrome/Edge đã cài trên Windows, hoặc Chromium của Playwright (`npx playwright install chromium`). Có thể chỉ định trình duyệt qua `PLAYWRIGHT_CHROME_EXECUTABLE`. Các kiểm thử dùng API giả, không gọi nhà cung cấp AI hoặc sửa database thật.
 
 ## Biến môi trường
 
@@ -230,6 +251,7 @@ CHAT_RATE_LIMIT_PER_MINUTE=10
 |---|:---:|---|
 | `PORT` | | Cổng backend (mặc định 5000) |
 | `CLIENT_URL` | ✅ | Origin của frontend, dùng cho CORS |
+| `DB_LOG_SQL`, `HTTP_LOG_REQUESTS` | | Đặt `true` để bật log SQL hoặc HTTP; mặc định tắt |
 | `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD` | ✅ | Thông tin kết nối SQL Server |
 | `DB_ENCRYPT`, `DB_TRUST_SERVER_CERT` | | Tùy chọn mã hóa kết nối; môi trường local thường dùng `false` / `true` |
 | `JWT_SECRET` | ✅ | Khóa ký token, dùng chuỗi dài và ngẫu nhiên |
@@ -255,11 +277,11 @@ Chỉ cần cấu hình **ít nhất một** provider. Khởi động lại back
 | Google Gemini | https://aistudio.google.com |
 | OpenRouter | https://openrouter.ai/keys |
 
-Khi một provider gặp lỗi hoặc hết hạn mức, bộ định tuyến sẽ **fallback** sang provider khác đã được cấu hình. API key chỉ nằm ở backend, không đưa xuống trình duyệt.
+Khi một provider gặp lỗi hoặc hết hạn mức, bộ định tuyến sẽ **fallback** sang model đang bật của provider khác đã được cấu hình và đáp ứng loại nội dung trong lịch sử hội thoại. Khi tắt toàn bộ model, chat sẽ báo không có model khả dụng. API key chỉ nằm ở backend, không đưa xuống trình duyệt.
 
 ## Cơ sở dữ liệu
 
-Schema nằm tại `backend/sql/schema.sql`. Các model chính (thư mục `backend/models/`):
+Toàn bộ SQL nằm trong một file `backend/sql/schema.sql`: tạo database và bảng, bổ sung các cột còn thiếu trên DB cũ, tạo index và đặt hạn mức token. Chạy toàn bộ file bằng SSMS / sqlcmd. Các model chính (thư mục `backend/models/`):
 
 | Model | Mô tả |
 |---|---|
@@ -270,11 +292,15 @@ Schema nằm tại `backend/sql/schema.sql`. Các model chính (thư mục `back
 
 Quan hệ chính: `User` 1–N `Conversation`; `Conversation` 1–N `Message`.
 
+Phần cuối script đặt hạn mức mỗi người dùng / model / ngày cho các model đang có `dailyTokenLimit = 0`: Gemini **100.000**, Groq **50.000**, OpenRouter **30.000**, provider khác **50.000** token. Hạn mức khác `0` được giữ nguyên. Vì `0` trong ứng dụng có nghĩa là không giới hạn, nếu muốn dùng không giới hạn hãy đặt lại `0` trong Admin sau khi chạy script. Script không tạo tài khoản admin hoặc danh sách model; với DB mới, chạy `npm run seed` rồi chạy lại script để áp dụng hạn mức cho model vừa tạo.
+
+Gửi lại cùng `requestId` không tạo thêm câu hỏi hoặc tính lại token cho câu trả lời đã hoàn tất. Khóa ứng dụng SQL Server (`sp_getapplock`) tuần tự hóa chat theo người dùng và hội thoại, kể cả khi chạy nhiều backend; yêu cầu trùng lúc nhận `409 CHAT_BUSY`. Pool giữ khóa được tách khỏi pool truy vấn để các luồng streaming không chặn việc lưu dữ liệu.
+
 ## Tài khoản quản trị
 
 Tài khoản admin được tạo theo cấu hình trong `backend/.env` và logic của `backend/seed.js`:
 
-1. Đặt `ADMIN_USERNAME`, `ADMIN_EMAIL`, `ADMIN_PASSWORD` trong `backend/.env`.
+1. Đặt `ADMIN_USERNAME`, `ADMIN_EMAIL`, `ADMIN_PASSWORD` trong `backend/.env`. Mật khẩu phải có ít nhất 12 ký tự và khác các giá trị mẫu; seed không có mật khẩu mặc định.
 2. Chạy `npm run seed` trong thư mục `backend`.
 3. Đăng nhập bằng thông tin vừa cấu hình và mở khu vực quản trị.
 
@@ -282,18 +308,27 @@ Tài khoản admin được tạo theo cấu hình trong `backend/.env` và logi
 
 ## Xác thực và bảo mật
 
+- API kiểm tra kiểu dữ liệu, ID và giới hạn số trước khi cập nhật. Các thao tác đổi model mặc định được khóa để tránh có nhiều model mặc định khi quản trị đồng thời.
+- Xóa hội thoại hoặc tài khoản dùng transaction; câu trả lời thành công và bản ghi token cũng được lưu trong cùng transaction.
+- Khóa tài khoản thu hồi JWT cũ; mở khóa không khôi phục những JWT đã bị thu hồi. Chạy lại seed giữ nguyên lựa chọn tắt model của quản trị viên.
+
 - Xác thực bằng **JWT**, gửi qua header `Authorization: Bearer <token>`.
+- Đổi hoặc đặt lại mật khẩu thu hồi toàn bộ JWT cũ qua `tokenVersion`; người dùng cần đăng nhập lại. Lỗi database tạm thời không xóa phiên đăng nhập đã lưu trên trình duyệt.
 - Mật khẩu được băm bằng `bcryptjs`; không lưu mật khẩu dạng thô.
 - Middleware tách riêng cho **xác thực** và **phân quyền admin**; lỗi được xử lý tập trung.
 - **Rate limit** cho yêu cầu chat, cấu hình qua `CHAT_RATE_LIMIT_PER_MINUTE`.
 - CORS giới hạn theo `CLIENT_URL`.
 - API key của AI provider chỉ nằm ở backend.
 
+`sprintf-js`, phụ thuộc gián tiếp của driver SQL Server, dùng bản vá cục bộ có giới hạn tài nguyên. Nguồn, giấy phép và hướng dẫn thay thế khi upstream phát hành bản vá nằm tại [backend/vendor/sprintf-js/README.md](backend/vendor/sprintf-js/README.md).
+
 Lưu ý khi đưa lên GitHub:
 
 - **Không commit** `backend/.env`, `frontend/.env` hoặc file chứa API key, mật khẩu.
 - `.env.example` chỉ chứa giá trị mẫu.
 - `.gitignore` cần loại trừ `.env`, `.env.*` (trừ `.env.example`), `node_modules/`, `dist/`.
+- Project đã bỏ qua cấu hình IDE (`.vscode/`, `.idea/`), file `.seeded`, báo cáo Playwright, coverage, cache, log và file backup database. Chúng vẫn nằm trên máy, không được thêm vào commit thông thường.
+- File riêng khác có thể đặt vào `local-only/` ở thư mục gốc; thư mục này cũng được Git bỏ qua. Script `start-project.bat`, thư mục `scripts/`, mã nguồn, test, `package-lock.json`, `.env.example` và `backend/vendor/sprintf-js/` cần được commit để project cài và chạy được ở máy khác.
 - Nếu secret lỡ bị push, hãy **thu hồi / đổi secret ngay** và xử lý lịch sử Git; xóa khỏi mã nguồn là chưa đủ.
 - Khi triển khai: dùng mật khẩu quản trị mạnh, giới hạn quyền tài khoản database, bật HTTPS.
 
@@ -339,7 +374,7 @@ Kết quả nằm trong `frontend/dist/`, thường không cần commit lên Git
 
 ## Hướng phát triển
 
-- [ ] Bổ sung kiểm thử tự động cho API và giao diện.
+- [x] Bổ sung kiểm thử tự động cho API và giao diện.
 - [ ] Hoàn thiện phân trang và bộ lọc nâng cao cho trang quản trị.
 - [ ] Bổ sung logging, giám sát lỗi và thống kê mức sử dụng.
 - [ ] Cải thiện quản lý quota, timeout và retry cho từng AI provider.

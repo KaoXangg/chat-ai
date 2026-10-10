@@ -67,8 +67,8 @@ export async function getExhaustedModels(userId, catalog) {
   return exhausted;
 }
 
-/** Ghi lượng token của một lượt trả lời. Không bao giờ ném lỗi để không làm hỏng luồng chat. */
-export async function recordUsage({ userId, provider, modelId, usage }) {
+/** Successful replies and their quota ledger commit together; partial replies log failures. */
+export async function recordUsage({ userId, provider, modelId, usage }, { transaction, strict = false } = {}) {
   if (!usage) return;
   const promptTokens = Math.max(0, Math.round(Number(usage.promptTokens) || 0));
   const completionTokens = Math.max(0, Math.round(Number(usage.completionTokens) || 0));
@@ -83,8 +83,9 @@ export async function recordUsage({ userId, provider, modelId, usage }) {
       completionTokens,
       totalTokens: promptTokens + completionTokens,
       estimated: Boolean(usage.estimated),
-    });
+    }, { transaction });
   } catch (err) {
+    if (strict) throw err;
     console.error("[Quota] Không thể ghi nhận token:", err.message);
   }
 }

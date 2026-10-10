@@ -24,7 +24,7 @@ export default function UserAvatar({ user, size = 32, className, onClick, title 
       aria-label={title || (user?.username ? `Avatar ${user.username}` : "Avatar")}
       className={clsx(
         "relative shrink-0 rounded-full overflow-hidden flex items-center justify-center",
-        "bg-gradient-to-br from-ion-400 to-ion-600 text-white font-semibold shadow-glow-ion",
+        "bg-linear-to-br from-ion-400 to-ion-600 text-white font-semibold shadow-glow-ion",
         onClick && "cursor-pointer hover:ring-2 hover:ring-brand-400/50 transition-shadow",
         !onClick && "cursor-default",
         className

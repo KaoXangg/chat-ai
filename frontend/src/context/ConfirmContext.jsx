@@ -39,7 +39,7 @@ export function ConfirmProvider({ children }) {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[110] flex items-center justify-center px-4 bg-black/50 backdrop-blur-sm"
+            className="fixed inset-0 z-[110] flex items-center justify-center px-4 bg-black/50 backdrop-blur-xs"
             onClick={() => handle(false)}
           >
             <motion.div
@@ -78,8 +78,8 @@ export function ConfirmProvider({ children }) {
                   onClick={() => handle(true)}
                   className={`flex-1 py-2.5 rounded-2xl text-sm font-medium text-white transition-all ${
                     state.danger
-                      ? "bg-gradient-to-r from-red-500 to-red-600 hover:shadow-[0_0_0_1px_rgba(239,68,68,0.4),0_8px_30px_-8px_rgba(239,68,68,0.55)]"
-                      : "bg-gradient-to-r from-brand-500 to-brand-600 hover:shadow-glow"
+                      ? "bg-linear-to-r from-red-500 to-red-600 hover:shadow-[0_0_0_1px_rgba(239,68,68,0.4),0_8px_30px_-8px_rgba(239,68,68,0.55)]"
+                      : "bg-linear-to-r from-brand-500 to-brand-600 hover:shadow-glow"
                   }`}
                 >
                   {state.confirmLabel}

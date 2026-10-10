@@ -92,7 +92,7 @@ const AuthInput = forwardRef(function AuthInput(
           "relative flex items-center rounded-xl",
           "h-[38px] sm:h-10",
           "transition-[border-color,box-shadow,background-color] duration-150 ease-out",
-          "border bg-white dark:bg-zinc-900/60 backdrop-blur-sm",
+          "border bg-white dark:bg-zinc-900/60 backdrop-blur-xs",
           error
             ? "border-red-500/80 shadow-[0_0_0_3px_rgba(239,68,68,0.12)]"
             : "border-zinc-200 dark:border-zinc-800 hover:border-zinc-300 dark:hover:border-zinc-700 focus-within:border-brand-500 focus-within:shadow-[0_0_0_3px_rgba(99,102,241,0.14)]",
@@ -125,7 +125,7 @@ const AuthInput = forwardRef(function AuthInput(
           aria-invalid={Boolean(error)}
           aria-describedby={error ? `${id}-error` : undefined}
           className={clsx(
-            "w-full h-full bg-transparent text-[13.5px] text-zinc-900 dark:text-zinc-100 outline-none leading-normal",
+            "w-full h-full bg-transparent text-[13.5px] text-zinc-900 dark:text-zinc-100 outline-hidden leading-normal",
             "placeholder:text-zinc-400 dark:placeholder:text-zinc-500 placeholder:transition-opacity placeholder:duration-150 focus:placeholder:opacity-50",
             disabled && "cursor-not-allowed",
             Icon ? "ps-1.5" : "ps-3",

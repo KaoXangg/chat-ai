@@ -10,4 +10,8 @@ export default {
   "error.INVALID_FEEDBACK": "Invalid feedback value.",
   "error.REQUEST_FAILED": "Cannot connect to the server.",
   "error.CONVERSATION_FAILED": "Could not create the conversation.",
+  "error.CANNOT_DELETE_SELF": "You cannot delete your own account.",
+  "error.CANNOT_MODIFY_SELF": "You cannot suspend or demote yourself.",
+  "error.INVALID_AVATAR": "Invalid avatar. Use the random avatar button.",
+  "error.INTERNAL_ERROR": "A server error occurred. Please try again.",
 };

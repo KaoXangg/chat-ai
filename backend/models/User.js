@@ -23,6 +23,7 @@ const User = sequelize.define(
       },
     },
     passwordHash: { type: DataTypes.STRING(255), allowNull: false },
+    tokenVersion: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
     role: {
       type: DataTypes.STRING(10),
       allowNull: false,

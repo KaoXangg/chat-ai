@@ -51,6 +51,13 @@ export default function Chat() {
   const skipNextMessageLoadRef = useRef(new Set());
   const sendLockRef = useRef(false);
   const draftTouchedRef = useRef(false); // người dùng đã tự chọn model -> không ghi đè bằng model mặc định
+  const conversationLoadVersionRef = useRef(0);
+  const searchTermRef = useRef(searchTerm);
+  searchTermRef.current = searchTerm;
+  const messagesRef = useRef(messages);
+  messagesRef.current = messages;
+  const conversationsRef = useRef(conversations);
+  conversationsRef.current = conversations;
   const { sendMessage, regenerate, editMessage, stop, isStreaming } = useChatStream();
   const { user } = useAuth();
   const { t, errorMessage, lang } = useI18n();
@@ -64,15 +71,17 @@ export default function Chat() {
   const currentModel = models.find((m) => m.provider === currentSelection.provider && m.modelId === currentSelection.model);
   const currentUsage = usage?.models?.find((m) => m.provider === currentSelection.provider && m.modelId === currentSelection.model);
   const usageTonePill = usageTone(currentUsage?.percentRemaining);
-  // Prefer the model's declared capability (admin-configurable); fall back to the historical
-  // gemini-only behavior for models seeded before "vision" existed as a capability tag.
-  const allowImage = Boolean(currentModel?.capabilities?.includes("vision") || currentSelection.provider === "gemini");
+  // Attachments follow the selected model's declared capability.
+  const allowImage = Boolean(currentModel?.capabilities?.includes("vision"));
+  const activeIdRef = useRef(activeId);
+  activeIdRef.current = activeId;
 
   const loadConversations = useCallback(
-    async (search = "") => {
+    async (search = searchTermRef.current) => {
+      const version = ++conversationLoadVersionRef.current;
       try {
         const res = await api.get("/conversations", { params: { search } });
-        setConversations(res.data.data.conversations);
+        if (version === conversationLoadVersionRef.current) setConversations(res.data.data.conversations);
         return res.data.data.conversations;
       } catch (err) {
         toast.error(errorMessage(err, "chat.err.loadConversations"));
@@ -133,10 +142,11 @@ export default function Chat() {
   useEffect(() => {
     if (!activeId) {
       setMessages([]);
+      setMessagesLoading(false);
       return;
     }
 
-    if (skipNextMessageLoadRef.current.delete(activeId)) return;
+    if (skipNextMessageLoadRef.current.delete(activeId)) { setMessagesLoading(false); return; }
 
     const loadVersion = messageLoadVersionRef.current;
     let cancelled = false;
@@ -194,16 +204,26 @@ export default function Chat() {
   };
 
   const handleNewConversation = async () => {
+    if (sendLockRef.current) return;
+    sendLockRef.current = true;
+    setIsSubmitting(true);
+    const previousId = activeIdRef.current;
     try {
       const res = await api.post("/conversations", draftModel);
       const conv = res.data.data.conversation;
+      setConversations((prev) => [conv, ...prev]);
+      if (activeIdRef.current !== previousId) return;
+      messageLoadVersionRef.current += 1;
       skipNextMessageLoadRef.current.add(conv._id);
       setMessages([]);
-      setConversations((prev) => [conv, ...prev]);
+      activeIdRef.current = conv._id;
       setActiveId(conv._id);
       setSidebarOpen(false);
     } catch (err) {
       toast.error(errorMessage(err, "chat.err.create"));
+    } finally {
+      sendLockRef.current = false;
+      setIsSubmitting(false);
     }
   };
 
@@ -247,6 +267,7 @@ export default function Chat() {
     const conv = res.data.data.conversation;
     skipNextMessageLoadRef.current.add(conv._id);
     setConversations((prev) => [conv, ...prev]);
+    activeIdRef.current = conv._id;
     setActiveId(conv._id);
     return conv._id;
   };
@@ -258,25 +279,35 @@ export default function Chat() {
     setMessages((prev) => prev.map((m) => (m.clientKey === clientKey ? { ...m, ...update(m) } : m)));
   };
 
+  const refreshMessages = async (conversationId) => {
+    const version = messageLoadVersionRef.current;
+    try {
+      const res = await api.get(`/conversations/${conversationId}/messages`);
+      if (activeIdRef.current === conversationId && version === messageLoadVersionRef.current) setMessages(res.data.data.messages);
+    } catch (err) { toast.error(errorMessage(err, "chat.err.loadMessages")); }
+  };
+
   /**
    * Bộ xử lý sự kiện stream cho một lượt trả lời.
    * - assistantKey / userKey: clientKey của tin nhắn tạm trong state.
    * - onPreStreamError: xử lý riêng khi lỗi xảy ra TRƯỚC khi máy chủ bắt đầu stream
    *   (mặc định hiện thẻ lỗi với nút "Thử lại" = tạo lại câu trả lời).
    */
-  const buildHandlers = (assistantKey, { userKey, onPreStreamError, replacedClientKey } = {}) => ({
+  const buildHandlers = (assistantKey, { conversationId, userKey, onPreStreamError, replacedClientKey } = {}) => ({
     onStart: (data) => {
+      if (activeIdRef.current !== conversationId) return;
       if (userKey && data.userMessageId) patchMessage(userKey, () => ({ _id: data.userMessageId }));
     },
     onStop: () => {
-      setMessages((prev) => prev
+      if (activeIdRef.current === conversationId) setMessages((prev) => prev
         .filter((m) => m.clientKey !== assistantKey || m.content)
         .map((m) => m.clientKey === assistantKey ? { ...m, interrupted: true } : m));
       loadUsage();
     },
-    onToken: (token) => patchMessage(assistantKey, (m) => ({ content: m.content + token })),
+    onToken: (token) => { if (activeIdRef.current === conversationId) patchMessage(assistantKey, (m) => ({ content: m.content + token })); },
     onDone: (data) => {
-      setMessages((prev) =>
+      if (activeIdRef.current === conversationId && !messagesRef.current.some(m => m.clientKey === assistantKey)) refreshMessages(conversationId);
+      if (activeIdRef.current === conversationId) setMessages((prev) =>
         prev.filter((m) => (!data.replacedMessageId || m._id !== data.replacedMessageId)
           && !(data.replacedAfterId != null && m.role === "assistant" && Number(m._id) > data.replacedAfterId && Number(m._id) <= Number(data.replacedMessageId))
           && (!replacedClientKey || (m.clientKey || m._id) !== replacedClientKey)).map((m) => {
@@ -287,13 +318,15 @@ export default function Chat() {
           return m;
         })
       );
-      loadConversations(searchTerm);
+      loadConversations();
       loadUsage();
     },
-    onError: (message, code, { preStream, userMessageId, messageId, interrupted } = {}) => {
+    onError: (message, code, metadata = {}) => {
+      const { preStream, userMessageId, messageId, interrupted } = metadata;
       if (code === "QUOTA_EXCEEDED" || !preStream) loadUsage();
+      if (activeIdRef.current !== conversationId) return;
       if (preStream && onPreStreamError) {
-        onPreStreamError(message, code);
+        onPreStreamError(message, code, metadata);
         return;
       }
       setMessages((prev) =>
@@ -307,28 +340,32 @@ export default function Chat() {
   });
 
   const handleSend = async (content, options = {}) => {
-    if (sendLockRef.current || isStreaming) return;
+    if (sendLockRef.current || isStreaming || messagesLoading) return;
     sendLockRef.current = true;
     setIsSubmitting(true);
     messageLoadVersionRef.current += 1;
 
-    const { images, useWebSearch } = options;
+    const { images } = options;
+    const requestId = options.requestId || crypto.randomUUID();
+    const retryOptions = { ...options, requestId };
     const userKey = newTempKey("tmp-u");
     const assistantKey = newTempKey("tmp-a");
     setMessages((prev) => [
       ...prev,
-      { _id: userKey, clientKey: userKey, role: "user", content, images: images?.length ? images : null },
+      { _id: userKey, clientKey: userKey, requestId, role: "user", content, images: images?.length ? images : null },
       { _id: assistantKey, clientKey: assistantKey, role: "assistant", content: "" },
     ]);
 
-    // Lỗi trước khi máy chủ lưu tin nhắn (rate limit, mất mạng, không tạo được cuộc trò chuyện...):
-    // "Thử lại" phải GỬI LẠI tin nhắn chứ không phải tạo lại câu trả lời cũ.
+    // Khi chưa nhận xác nhận lưu, gửi lại cùng requestId để tránh tạo trùng nếu phản hồi bị mất.
     const showSendError = (message, code) =>
-      patchMessage(assistantKey, () => ({ error: { message, code, retry: "send", payload: { content, options } } }));
+      patchMessage(assistantKey, () => ({ error: { message, code, retry: "send", payload: { content, options: retryOptions } } }));
 
     try {
       const convId = await ensureConversation();
-      await sendMessage(convId, content, { images, useWebSearch }, buildHandlers(assistantKey, { userKey, onPreStreamError: showSendError }));
+      await sendMessage(convId, content, retryOptions, buildHandlers(assistantKey, { conversationId: convId, userKey, onPreStreamError: async (message, code) => {
+        if (code === "REQUEST_ALREADY_PROCESSED") { await refreshMessages(convId); toast.error(message); }
+        else showSendError(message, code);
+      } }));
     } catch (err) {
       showSendError(errorMessage(err, "error.CONVERSATION_FAILED"), "CONVERSATION_FAILED");
     } finally {
@@ -338,7 +375,7 @@ export default function Chat() {
   };
 
   const handleRegenerate = async () => {
-    if (!activeId || sendLockRef.current || isStreaming || isSubmitting) return;
+    if (!activeId || sendLockRef.current || isStreaming || isSubmitting || messagesLoading) return;
     sendLockRef.current = true;
     setIsSubmitting(true);
     messageLoadVersionRef.current += 1;
@@ -352,7 +389,7 @@ export default function Chat() {
     });
 
     try {
-      await regenerate(activeId, buildHandlers(assistantKey, { replacedClientKey }));
+      await regenerate(activeId, buildHandlers(assistantKey, { conversationId: activeId, replacedClientKey }));
     } catch (err) {
       toast.error(errorMessage(err, "chat.err.regenerate"));
     } finally {
@@ -364,7 +401,7 @@ export default function Chat() {
   /** Sửa một tin nhắn đã gửi: cắt bỏ mọi tin phía sau nó rồi gửi lại (backend xóa tương ứng). */
   const handleEdit = async (messageId, newContent) => {
     const text = newContent.trim();
-    if (!text || !activeId || sendLockRef.current || isStreaming) return;
+    if (!text || !activeId || sendLockRef.current || isStreaming || messagesLoading) return;
     const index = messages.findIndex((m) => m._id === messageId && m.role === "user");
     if (index === -1) return;
 
@@ -380,14 +417,23 @@ export default function Chat() {
       { _id: assistantKey, clientKey: assistantKey, role: "assistant", content: "" },
     ]);
 
-    // Máy chủ chưa thay đổi gì nếu lỗi xảy ra trước khi stream -> khôi phục lại danh sách tin nhắn cũ.
-    const restore = (message) => {
-      setMessages(snapshot);
+    const conversationId = activeId;
+    const editVersion = messageLoadVersionRef.current;
+    // A network failure can lose the acknowledgement after the edit has committed.
+    const restore = async (message, _code, { uncertain } = {}) => {
+      if (uncertain) {
+        try {
+          const res = await api.get(`/conversations/${conversationId}/messages`);
+          if (activeIdRef.current === conversationId && editVersion === messageLoadVersionRef.current) setMessages(res.data.data.messages);
+        } catch {
+          // Keep the edited view when the server state cannot yet be confirmed.
+        }
+      } else if (activeIdRef.current === conversationId && editVersion === messageLoadVersionRef.current) setMessages(snapshot);
       toast.error(message);
     };
 
     try {
-      await editMessage(activeId, messageId, text, {}, buildHandlers(assistantKey, { onPreStreamError: restore }));
+      await editMessage(activeId, messageId, text, {}, buildHandlers(assistantKey, { conversationId: activeId, onPreStreamError: restore }));
     } catch (err) {
       restore(errorMessage(err, "chat.err.edit"));
     } finally {
@@ -396,10 +442,10 @@ export default function Chat() {
     }
   };
 
-  /** Nút "Thử lại" trên thẻ lỗi: gửi lại tin nhắn (nếu chưa được lưu) hoặc tạo lại câu trả lời. */
+  /** Gửi lại cùng requestId khi chưa nhận xác nhận, hoặc tạo lại câu trả lời đã bắt đầu. */
   const handleRetry = (message) => {
     const error = message?.error;
-    if (!error || isStreaming || isSubmitting) return;
+    if (!error || isStreaming || isSubmitting || messagesLoading) return;
     if (error.retry === "send" && error.payload) {
       setMessages((prev) => prev.slice(0, -2)); // bỏ cặp tin nhắn tạm bị lỗi
       handleSend(error.payload.content, error.payload.options);
@@ -443,7 +489,7 @@ export default function Chat() {
   const handlePin = async (id, pinned) => {
     try {
       await api.patch(`/conversations/${id}`, { pinned });
-      await loadConversations(searchTerm);
+      await loadConversations();
     } catch (err) {
       toast.error(errorMessage(err, "chat.err.pin"));
     }
@@ -460,9 +506,16 @@ export default function Chat() {
 
     try {
       await api.delete(`/conversations/${id}`);
-      const updated = conversations.filter((c) => c._id !== id);
-      setConversations(updated);
-      if (activeId === id) setActiveId(updated[0]?._id || null);
+      const updated = conversationsRef.current.filter((c) => c._id !== id);
+      setConversations((prev) => prev.filter((c) => c._id !== id));
+      if (activeIdRef.current === id) {
+        const nextId = updated[0]?._id || null;
+        activeIdRef.current = nextId;
+        messageLoadVersionRef.current += 1;
+        setMessages([]);
+        setMessagesLoading(Boolean(nextId));
+        setActiveId(nextId);
+      }
       toast.success(t("chat.deleted"));
     } catch (err) {
       toast.error(errorMessage(err, "chat.err.delete"));
@@ -470,6 +523,7 @@ export default function Chat() {
   };
 
   const handleSearch = (term) => {
+    searchTermRef.current = term;
     setSearchTerm(term);
     loadConversations(term);
   };
@@ -480,6 +534,13 @@ export default function Chat() {
         conversations={conversations}
         activeId={activeId}
         onSelect={(id) => {
+          if (sendLockRef.current && !activeIdRef.current) return;
+          if (activeIdRef.current !== id) {
+            activeIdRef.current = id;
+            messageLoadVersionRef.current += 1;
+            setMessages([]);
+            setMessagesLoading(true);
+          }
           setActiveId(id);
           setSidebarOpen(false);
         }}
@@ -606,7 +667,7 @@ export default function Chat() {
           </div>
         </div>
 
-        <ChatInput onSend={handleSend} isStreaming={isStreaming} disabled={isSubmitting} onStop={stop} allowImage={allowImage} />
+        <ChatInput key={activeId || "draft"} onSend={handleSend} isStreaming={isStreaming} disabled={isSubmitting || messagesLoading} onStop={stop} allowImage={allowImage} />
         <UsageModal
           open={usageOpen}
           onClose={() => setUsageOpen(false)}

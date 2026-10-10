@@ -8,9 +8,16 @@ import AIModel from "../models/AIModel.js";
 import { authMiddleware } from "../middleware/auth.js";
 import { requireAdmin } from "../middleware/admin.js";
 import { getConfiguredProviders } from "../providers/aiRouter.js";
+import { parsePagination } from "../utils/pagination.js";
+import { serializeConversationMutation, serializeDatabaseMutation, userChatLock } from "../utils/chatLock.js";
+import { sanitizeModelPayload } from "../utils/modelPayload.js";
+import { invalidInput, validateIdParam } from "../utils/validation.js";
 
 const router = express.Router();
 router.use(authMiddleware, requireAdmin);
+router.param("id", validateIdParam);
+const serializeModelMutation = handler => serializeDatabaseMutation(() => ["chat:model-catalog"], handler);
+const serializeUserMutation = handler => serializeDatabaseMutation(req => [userChatLock(req.params.id)], handler);
 
 // ---------- OVERVIEW / STATS ----------
 router.get("/stats", async (req, res, next) => {
@@ -62,7 +69,9 @@ router.get("/stats", async (req, res, next) => {
 // ---------- USER MANAGEMENT ----------
 router.get("/users", async (req, res, next) => {
   try {
-    const { search = "", page = 1, limit = 20, role, status } = req.query;
+    const { search = "", role, status } = req.query;
+    if (typeof search !== "string" || search.length > 255) throw invalidInput("Từ khóa tìm kiếm không hợp lệ.");
+    const { page, limit, offset } = parsePagination(req.query);
     const where = {};
     if (search) {
       where[Op.or] = [{ username: { [Op.like]: `%${search}%` } }, { email: { [Op.like]: `%${search}%` } }];
@@ -70,16 +79,15 @@ router.get("/users", async (req, res, next) => {
     if (role && ["user", "admin"].includes(role)) where.role = role;
     if (status && ["active", "banned"].includes(status)) where.status = status;
 
-    const offset = (Number(page) - 1) * Number(limit);
     const { rows: users, count: total } = await User.findAndCountAll({
       where,
       attributes: { exclude: ["passwordHash"] },
       order: [["createdAt", "DESC"]],
       offset,
-      limit: Number(limit),
+      limit,
     });
 
-    res.json({ success: true, data: { users, total, page: Number(page), limit: Number(limit) } });
+    res.json({ success: true, data: { users, total, page, limit } });
   } catch (err) {
     next(err);
   }
@@ -102,9 +110,10 @@ router.get("/users/:id", async (req, res, next) => {
   }
 });
 
-router.patch("/users/:id", async (req, res, next) => {
+router.patch("/users/:id", serializeUserMutation(async (req, res, next) => {
   try {
     const { status, role } = req.body;
+    if ((status !== undefined && !["active", "banned"].includes(status)) || (role !== undefined && !["user", "admin"].includes(role))) throw invalidInput();
     const user = await User.findByPk(req.params.id);
     if (!user) return res.status(404).json({ success: false, error: { code: "NOT_FOUND", message: "Không tìm thấy người dùng." } });
 
@@ -112,6 +121,7 @@ router.patch("/users/:id", async (req, res, next) => {
       return res.status(400).json({ success: false, error: { code: "CANNOT_MODIFY_SELF", message: "Bạn không thể tự khóa hoặc tự hạ quyền của mình." } });
     }
 
+    if (status === "banned" && user.status !== "banned") user.tokenVersion += 1;
     if (status && ["active", "banned"].includes(status)) user.status = status;
     if (role && ["user", "admin"].includes(role)) user.role = role;
 
@@ -122,9 +132,9 @@ router.patch("/users/:id", async (req, res, next) => {
   } catch (err) {
     next(err);
   }
-});
+}));
 
-router.delete("/users/:id", async (req, res, next) => {
+router.delete("/users/:id", serializeUserMutation(async (req, res, next) => {
   try {
     if (String(req.params.id) === String(req.user.id)) {
       return res.status(400).json({ success: false, error: { code: "CANNOT_DELETE_SELF", message: "Bạn không thể tự xóa tài khoản của mình." } });
@@ -133,28 +143,21 @@ router.delete("/users/:id", async (req, res, next) => {
     if (!user) return res.status(404).json({ success: false, error: { code: "NOT_FOUND", message: "Không tìm thấy người dùng." } });
 
     const conversationIds = (await Conversation.findAll({ where: { userId: user.id }, attributes: ["id"] })).map((c) => c.id);
-    if (conversationIds.length) {
-      await Message.destroy({ where: { conversationId: { [Op.in]: conversationIds } } });
-    }
-    await Conversation.destroy({ where: { userId: user.id } });
-    await user.destroy();
+    await sequelize.transaction(async (transaction) => {
+      if (conversationIds.length) {
+        await Message.destroy({ where: { conversationId: { [Op.in]: conversationIds } }, transaction });
+      }
+      await Conversation.destroy({ where: { userId: user.id }, transaction });
+      await user.destroy({ transaction });
+    });
 
     res.json({ success: true, data: { message: "Đã xóa người dùng và toàn bộ dữ liệu liên quan." } });
   } catch (err) {
     next(err);
   }
-});
+}));
 
 // ---------- AI MODEL MANAGEMENT ----------
-/** Bản sao body và chuẩn hóa hạn mức token (số nguyên >= 0; 0 = không giới hạn). */
-function sanitizeModelPayload(body) {
-  const payload = { ...body };
-  if (payload.dailyTokenLimit !== undefined) {
-    payload.dailyTokenLimit = Math.max(0, Math.floor(Number(payload.dailyTokenLimit)) || 0);
-  }
-  return payload;
-}
-
 router.get("/models", async (req, res, next) => {
   try {
     const models = await AIModel.findAll({ order: [["provider", "ASC"], ["priority", "ASC"]] });
@@ -164,9 +167,9 @@ router.get("/models", async (req, res, next) => {
   }
 });
 
-router.post("/models", async (req, res, next) => {
+router.post("/models", serializeModelMutation(async (req, res, next) => {
   try {
-    const payload = sanitizeModelPayload(req.body);
+    const payload = sanitizeModelPayload(req.body, { creating: true });
     // Model mặc định phải đang bật.
     if (payload.isDefault === true) payload.enabled = true;
 
@@ -181,9 +184,9 @@ router.post("/models", async (req, res, next) => {
   } catch (err) {
     next(err);
   }
-});
+}));
 
-router.patch("/models/:id", async (req, res, next) => {
+router.patch("/models/:id", serializeModelMutation(async (req, res, next) => {
   try {
     const model = await AIModel.findByPk(req.params.id);
     if (!model) return res.status(404).json({ success: false, error: { code: "NOT_FOUND", message: "Không tìm thấy mô hình." } });
@@ -204,9 +207,9 @@ router.patch("/models/:id", async (req, res, next) => {
   } catch (err) {
     next(err);
   }
-});
+}));
 
-router.delete("/models/:id", async (req, res, next) => {
+router.delete("/models/:id", serializeModelMutation(async (req, res, next) => {
   try {
     const model = await AIModel.findByPk(req.params.id);
     if (!model) return res.status(404).json({ success: false, error: { code: "NOT_FOUND", message: "Không tìm thấy mô hình." } });
@@ -215,35 +218,36 @@ router.delete("/models/:id", async (req, res, next) => {
   } catch (err) {
     next(err);
   }
-});
+}));
 
 // ---------- CONVERSATIONS (xem/xoa vi pham) ----------
 router.get("/conversations", async (req, res, next) => {
   try {
-    const { page = 1, limit = 20 } = req.query;
-    const offset = (Number(page) - 1) * Number(limit);
+    const { page, limit, offset } = parsePagination(req.query);
     const { rows: conversations, count: total } = await Conversation.findAndCountAll({
       include: [{ model: User, as: "user", attributes: ["username", "email"] }],
       order: [["updatedAt", "DESC"]],
       offset,
-      limit: Number(limit),
+      limit,
     });
-    res.json({ success: true, data: { conversations, total } });
+    res.json({ success: true, data: { conversations, total, page, limit } });
   } catch (err) {
     next(err);
   }
 });
 
-router.delete("/conversations/:id", async (req, res, next) => {
+router.delete("/conversations/:id", serializeConversationMutation(async (req, res, next) => {
   try {
     const conversation = await Conversation.findByPk(req.params.id);
     if (!conversation) return res.status(404).json({ success: false, error: { code: "NOT_FOUND", message: "Không tìm thấy cuộc trò chuyện." } });
-    await Message.destroy({ where: { conversationId: conversation.id } });
-    await conversation.destroy();
+    await sequelize.transaction(async (transaction) => {
+      await Message.destroy({ where: { conversationId: conversation.id }, transaction });
+      await conversation.destroy({ transaction });
+    });
     res.json({ success: true, data: { message: "Đã xóa cuộc trò chuyện." } });
   } catch (err) {
     next(err);
   }
-});
+}));
 
 export default router;

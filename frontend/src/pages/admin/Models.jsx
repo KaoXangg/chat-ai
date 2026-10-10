@@ -99,7 +99,7 @@ function ModelFormModal({ open, onClose, onSaved, editingModel }) {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="fixed inset-0 z-[110] flex items-center justify-center px-4 bg-black/50 backdrop-blur-sm"
+          className="fixed inset-0 z-[110] flex items-center justify-center px-4 bg-black/50 backdrop-blur-xs"
           onClick={onClose}
         >
           <motion.form
@@ -130,7 +130,7 @@ function ModelFormModal({ open, onClose, onSaved, editingModel }) {
                   value={form.provider}
                   disabled={isEditing}
                   onChange={(e) => setForm((f) => ({ ...f, provider: e.target.value }))}
-                  className="w-full px-3 py-2 rounded-xl border border-edge-light dark:border-edge-dark bg-white/50 dark:bg-white/5 text-sm outline-none focus:border-brand-400 disabled:opacity-50"
+                  className="w-full px-3 py-2 rounded-xl border border-edge-light dark:border-edge-dark bg-white/50 dark:bg-white/5 text-sm outline-hidden focus:border-brand-400 disabled:opacity-50"
                 >
                   {PROVIDERS.map((p) => (
                     <option key={p} value={p}>
@@ -147,7 +147,7 @@ function ModelFormModal({ open, onClose, onSaved, editingModel }) {
                   disabled={isEditing}
                   onChange={(e) => setForm((f) => ({ ...f, modelId: e.target.value }))}
                   placeholder={t("admin.form.modelIdPlaceholder")}
-                  className="w-full px-3 py-2 rounded-xl border border-edge-light dark:border-edge-dark bg-white/50 dark:bg-white/5 text-sm outline-none focus:border-brand-400 disabled:opacity-50"
+                  className="w-full px-3 py-2 rounded-xl border border-edge-light dark:border-edge-dark bg-white/50 dark:bg-white/5 text-sm outline-hidden focus:border-brand-400 disabled:opacity-50"
                 />
               </div>
               <div>
@@ -157,7 +157,7 @@ function ModelFormModal({ open, onClose, onSaved, editingModel }) {
                   value={form.displayName}
                   onChange={(e) => setForm((f) => ({ ...f, displayName: e.target.value }))}
                   placeholder={t("admin.form.displayNamePlaceholder")}
-                  className="w-full px-3 py-2 rounded-xl border border-edge-light dark:border-edge-dark bg-white/50 dark:bg-white/5 text-sm outline-none focus:border-brand-400"
+                  className="w-full px-3 py-2 rounded-xl border border-edge-light dark:border-edge-dark bg-white/50 dark:bg-white/5 text-sm outline-hidden focus:border-brand-400"
                 />
               </div>
               <div>
@@ -167,7 +167,7 @@ function ModelFormModal({ open, onClose, onSaved, editingModel }) {
                   value={form.description}
                   onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
                   placeholder={t("admin.form.descriptionPlaceholder")}
-                  className="w-full px-3 py-2 rounded-xl border border-edge-light dark:border-edge-dark bg-white/50 dark:bg-white/5 text-sm outline-none focus:border-brand-400"
+                  className="w-full px-3 py-2 rounded-xl border border-edge-light dark:border-edge-dark bg-white/50 dark:bg-white/5 text-sm outline-hidden focus:border-brand-400"
                 />
               </div>
 
@@ -205,7 +205,7 @@ function ModelFormModal({ open, onClose, onSaved, editingModel }) {
                     min={0}
                     value={form.contextLength}
                     onChange={(e) => setForm((f) => ({ ...f, contextLength: e.target.value }))}
-                    className="w-full px-3 py-2 rounded-xl border border-edge-light dark:border-edge-dark bg-white/50 dark:bg-white/5 text-sm outline-none focus:border-brand-400"
+                    className="w-full px-3 py-2 rounded-xl border border-edge-light dark:border-edge-dark bg-white/50 dark:bg-white/5 text-sm outline-hidden focus:border-brand-400"
                   />
                 </div>
                 <div>
@@ -215,7 +215,7 @@ function ModelFormModal({ open, onClose, onSaved, editingModel }) {
                     type="number"
                     value={form.priority}
                     onChange={(e) => setForm((f) => ({ ...f, priority: e.target.value }))}
-                    className="w-full px-3 py-2 rounded-xl border border-edge-light dark:border-edge-dark bg-white/50 dark:bg-white/5 text-sm outline-none focus:border-brand-400"
+                    className="w-full px-3 py-2 rounded-xl border border-edge-light dark:border-edge-dark bg-white/50 dark:bg-white/5 text-sm outline-hidden focus:border-brand-400"
                   />
                 </div>
               </div>
@@ -227,7 +227,7 @@ function ModelFormModal({ open, onClose, onSaved, editingModel }) {
                   min={0}
                   value={form.dailyTokenLimit}
                   onChange={(e) => setForm((f) => ({ ...f, dailyTokenLimit: e.target.value }))}
-                  className="w-full px-3 py-2 rounded-xl border border-edge-light dark:border-edge-dark bg-white/50 dark:bg-white/5 text-sm outline-none focus:border-brand-400"
+                  className="w-full px-3 py-2 rounded-xl border border-edge-light dark:border-edge-dark bg-white/50 dark:bg-white/5 text-sm outline-hidden focus:border-brand-400"
                 />
               </div>
               <p className="text-[11px] opacity-40 -mt-1">

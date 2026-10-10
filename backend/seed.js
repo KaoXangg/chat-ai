@@ -70,7 +70,11 @@ async function seed() {
   const existingAdmin = await User.findOne({ where: { email: adminEmail } });
 
   if (!existingAdmin) {
-    const passwordHash = await bcrypt.hash(process.env.ADMIN_PASSWORD || "Admin@123456", 10);
+    const password = process.env.ADMIN_PASSWORD;
+    if (!password || password.length < 12 || ["Admin@123456", "doi-mat-khau-admin-manh", "replace_with_a_strong_password"].includes(password)) {
+      throw new Error("Cần cấu hình ADMIN_PASSWORD riêng, ít nhất 12 ký tự, trước khi tạo quản trị viên.");
+    }
+    const passwordHash = await bcrypt.hash(password, 10);
     await User.create({
       username: process.env.ADMIN_USERNAME || "admin",
       email: adminEmail,
@@ -92,12 +96,6 @@ async function seed() {
       console.log(`[Seed] Đã thêm mô hình: ${modelData.displayName}`);
     }
   }
-
-  // Re-enable Groq models included in the current Free plan for existing databases.
-  await AIModel.update(
-    { enabled: true },
-    { where: { provider: "groq", modelId: ["openai/gpt-oss-120b", "openai/gpt-oss-20b"] } },
-  );
 
   // Hide retired IDs so users do not keep selecting models that now return 404.
   for (const where of RETIRED_MODELS) {

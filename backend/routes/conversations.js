@@ -3,14 +3,27 @@ import { Op, literal } from "sequelize";
 import Conversation from "../models/Conversation.js";
 import Message from "../models/Message.js";
 import { authMiddleware } from "../middleware/auth.js";
+import { serializeConversationMutation } from "../utils/chatLock.js";
+import { sequelize } from "../config/db.js";
+import { invalidInput, validateIdParam } from "../utils/validation.js";
 
 const router = express.Router();
 router.use(authMiddleware);
+router.param("id", validateIdParam);
+router.param("messageId", validateIdParam);
+
+function validateConversationFields({ title, pinned, provider, model }) {
+  if (title !== undefined && typeof title !== "string") throw invalidInput("Tiêu đề không hợp lệ.");
+  if (pinned !== undefined && typeof pinned !== "boolean") throw invalidInput("Trạng thái ghim không hợp lệ.");
+  if (provider !== undefined && !["groq", "gemini", "openrouter"].includes(provider)) throw invalidInput("Nhà cung cấp không hợp lệ.");
+  if (model !== undefined && (typeof model !== "string" || !model.trim() || model.length > 150)) throw invalidInput("Mô hình không hợp lệ.");
+}
 
 // GET /api/conversations?search=... -> danh sách cuộc trò chuyện của người dùng, ưu tiên mục đã ghim.
 router.get("/", async (req, res, next) => {
   try {
     const { search } = req.query;
+    if (search !== undefined && (typeof search !== "string" || search.length > 120)) throw invalidInput("Từ khóa tìm kiếm không hợp lệ.");
     const where = { userId: req.user.id };
     if (search) where.title = { [Op.like]: `%${search}%` };
 
@@ -30,6 +43,7 @@ router.get("/", async (req, res, next) => {
 router.post("/", async (req, res, next) => {
   try {
     const { provider = "openrouter", model = "openrouter/free" } = req.body;
+    validateConversationFields({ provider, model });
     const conversation = await Conversation.create({
       userId: req.user.id,
       provider,
@@ -93,9 +107,10 @@ router.get("/:id/messages/:messageId/images/:index", async (req, res, next) => {
   }
 });
 
-router.patch("/:id", async (req, res, next) => {
+router.patch("/:id", serializeConversationMutation(async (req, res, next) => {
   try {
     const { title, pinned, provider, model } = req.body;
+    validateConversationFields({ title, pinned, provider, model });
     const conversation = await Conversation.findOne({ where: { id: req.params.id, userId: req.user.id } });
     if (!conversation) {
       return res.status(404).json({ success: false, error: { code: "NOT_FOUND", message: "Không tìm thấy cuộc trò chuyện." } });
@@ -111,20 +126,22 @@ router.patch("/:id", async (req, res, next) => {
   } catch (err) {
     next(err);
   }
-});
+}));
 
-router.delete("/:id", async (req, res, next) => {
+router.delete("/:id", serializeConversationMutation(async (req, res, next) => {
   try {
     const conversation = await Conversation.findOne({ where: { id: req.params.id, userId: req.user.id } });
     if (!conversation) {
       return res.status(404).json({ success: false, error: { code: "NOT_FOUND", message: "Không tìm thấy cuộc trò chuyện." } });
     }
-    await Message.destroy({ where: { conversationId: conversation.id } });
-    await conversation.destroy();
+    await sequelize.transaction(async (transaction) => {
+      await Message.destroy({ where: { conversationId: conversation.id }, transaction });
+      await conversation.destroy({ transaction });
+    });
     res.json({ success: true, data: { message: "Đã xóa cuộc trò chuyện." } });
   } catch (err) {
     next(err);
   }
-});
+}));
 
 export default router;

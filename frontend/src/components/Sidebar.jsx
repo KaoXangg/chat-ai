@@ -61,7 +61,7 @@ function ConversationRow({ conv, isActive, isEditing, editValue, onEditValueChan
       )}
     >
       {isActive && (
-        <motion.span layoutId="active-rail" className="absolute left-0 top-1.5 bottom-1.5 w-0.5 rounded-full bg-gradient-to-b from-brand-400 to-ion-400" />
+        <motion.span layoutId="active-rail" className="absolute left-0 top-1.5 bottom-1.5 w-0.5 rounded-full bg-linear-to-b from-brand-400 to-ion-400" />
       )}
       {conv.pinned && <Pin size={12} className="shrink-0 opacity-60" />}
       {isEditing ? (
@@ -72,7 +72,7 @@ function ConversationRow({ conv, isActive, isEditing, editValue, onEditValueChan
           onChange={(e) => onEditValueChange(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && onCommitEdit()}
           onClick={(e) => e.stopPropagation()}
-          className="flex-1 bg-transparent outline-none border-b border-brand-400"
+          className="flex-1 bg-transparent outline-hidden border-b border-brand-400"
         />
       ) : (
         <button
@@ -325,7 +325,7 @@ export default function Sidebar({
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={onCloseMobile}
-            className="fixed inset-0 bg-black/50 backdrop-blur-sm z-30 md:hidden"
+            className="fixed inset-0 bg-black/50 backdrop-blur-xs z-30 md:hidden"
           />
         )}
       </AnimatePresence>
@@ -396,7 +396,7 @@ export default function Sidebar({
               id="sidebar-search"
               onChange={(e) => onSearch(e.target.value)}
               placeholder={t("sidebar.searchPlaceholder")}
-              className="bg-transparent outline-none text-sm flex-1 min-w-0 placeholder:text-black/40 dark:placeholder:text-white/40"
+              className="bg-transparent outline-hidden text-sm flex-1 min-w-0 placeholder:text-black/40 dark:placeholder:text-white/40"
             />
           </div>
         </div>

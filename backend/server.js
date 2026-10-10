@@ -5,6 +5,7 @@ import morgan from "morgan";
 import { connectDB } from "./config/db.js";
 import "./models/index.js";
 import { notFoundHandler, errorHandler } from "./middleware/errorHandler.js";
+import { requireObjectBody } from "./utils/validation.js";
 
 import authRoutes from "./routes/auth.js";
 import conversationRoutes from "./routes/conversations.js";
@@ -18,7 +19,8 @@ const app = express();
 
 app.use(cors({ origin: process.env.CLIENT_URL || "http://localhost:5173", credentials: true }));
 app.use(express.json({ limit: "40mb" }));
-if (process.env.NODE_ENV !== "production") app.use(morgan("dev"));
+app.use(requireObjectBody);
+if (process.env.HTTP_LOG_REQUESTS === "true") app.use(morgan("dev"));
 
 app.get("/api/health", (req, res) => res.json({ success: true, data: { status: "ok", time: new Date().toISOString() } }));
 
@@ -37,6 +39,6 @@ const PORT = process.env.PORT || 5000;
 
 connectDB().then(() => {
   app.listen(PORT, () => {
-    console.log(`[Server] Chat AI backend dang chay tai http://localhost:${PORT}`);
+    console.log(`[Server] Chat AI backend đang chạy tại http://localhost:${PORT}`);
   });
 });

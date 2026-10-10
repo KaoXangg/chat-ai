@@ -10,4 +10,8 @@ export default {
   "error.INVALID_FEEDBACK": "Giá trị đánh giá không hợp lệ.",
   "error.REQUEST_FAILED": "Không thể kết nối với máy chủ.",
   "error.CONVERSATION_FAILED": "Không thể tạo cuộc trò chuyện.",
+  "error.CANNOT_DELETE_SELF": "Bạn không thể xóa chính tài khoản của mình.",
+  "error.CANNOT_MODIFY_SELF": "Bạn không thể tự khóa hoặc hạ quyền của chính mình.",
+  "error.INVALID_AVATAR": "Avatar không hợp lệ. Hãy dùng nút đổi avatar ngẫu nhiên.",
+  "error.INTERNAL_ERROR": "Máy chủ gặp lỗi. Vui lòng thử lại.",
 };

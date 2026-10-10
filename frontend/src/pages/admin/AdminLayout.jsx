@@ -100,7 +100,7 @@ export default function AdminLayout() {
       <AnimatePresence>
         {drawerOpen && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            onClick={() => setDrawerOpen(false)} className="fixed inset-0 bg-black/50 backdrop-blur-sm z-30 md:hidden" aria-hidden="true" />
+            onClick={() => setDrawerOpen(false)} className="fixed inset-0 bg-black/50 backdrop-blur-xs z-30 md:hidden" aria-hidden="true" />
         )}
       </AnimatePresence>
       <aside id="admin-navigation" ref={drawerRef} role={drawerOpen && isMobile ? "dialog" : undefined}

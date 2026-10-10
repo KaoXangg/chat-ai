@@ -2,6 +2,7 @@ import express from "express";
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
 import { Op, literal } from "sequelize";
+import { sequelize } from "../config/db.js";
 import User from "../models/User.js";
 import PasswordReset from "../models/PasswordReset.js";
 import { generateToken } from "../utils/generateToken.js";
@@ -47,22 +48,22 @@ router.post("/register", authLimiter, async (req, res, next) => {
   try {
     const { username, email, password } = req.body;
 
-    if (!username || !email || !password) {
+    if (typeof username !== "string" || typeof email !== "string" || typeof password !== "string" || !username.trim() || !email.trim() || !password) {
       return res.status(400).json({ success: false, error: { code: "MISSING_FIELDS", message: "Vui lòng điền đầy đủ thông tin." } });
     }
     if (password.length < 6) {
       return res.status(400).json({ success: false, error: { code: "WEAK_PASSWORD", message: "Mật khẩu phải có ít nhất 6 ký tự." } });
     }
 
-    const existing = await User.findOne({ where: { email: email.toLowerCase() } });
+    const existing = await User.findOne({ where: { email: email.toLowerCase().trim() } });
     if (existing) {
       return res.status(409).json({ success: false, error: { code: "EMAIL_TAKEN", message: "Email đã được sử dụng." } });
     }
 
     const passwordHash = await bcrypt.hash(password, 10);
     const user = await User.create({
-      username,
-      email: email.toLowerCase(),
+      username: username.trim(),
+      email: email.toLowerCase().trim(),
       passwordHash,
       avatar: generateRandomAvatar(),
     });
@@ -77,11 +78,11 @@ router.post("/register", authLimiter, async (req, res, next) => {
 router.post("/login", authLimiter, async (req, res, next) => {
   try {
     const { email, password } = req.body;
-    if (!email || !password) {
+    if (typeof email !== "string" || typeof password !== "string" || !email.trim() || !password) {
       return res.status(400).json({ success: false, error: { code: "MISSING_FIELDS", message: "Vui lòng điền email và mật khẩu." } });
     }
 
-    const user = await User.findOne({ where: { email: email.toLowerCase() } });
+    const user = await User.findOne({ where: { email: email.toLowerCase().trim() } });
     if (!user) {
       return res.status(401).json({ success: false, error: { code: "INVALID_CREDENTIALS", message: "Email hoặc mật khẩu không đúng." } });
     }
@@ -161,7 +162,7 @@ router.post("/avatar/random", authMiddleware, async (req, res, next) => {
 router.post("/change-password", authMiddleware, async (req, res, next) => {
   try {
     const { currentPassword, newPassword } = req.body;
-    if (!currentPassword || !newPassword || newPassword.length < 6) {
+    if (typeof currentPassword !== "string" || typeof newPassword !== "string" || !currentPassword || newPassword.length < 6) {
       return res.status(400).json({ success: false, error: { code: "INVALID_INPUT", message: "Dữ liệu không hợp lệ." } });
     }
 
@@ -176,8 +177,14 @@ router.post("/change-password", authMiddleware, async (req, res, next) => {
       return res.status(401).json({ success: false, error: { code: "WRONG_PASSWORD", message: "Mật khẩu hiện tại không đúng." } });
     }
 
-    full.passwordHash = await bcrypt.hash(newPassword, 10);
-    await full.save();
+    const passwordHash = await bcrypt.hash(newPassword, 10);
+    await sequelize.transaction(async (transaction) => {
+      const [changed] = await User.update({ passwordHash, tokenVersion: literal("tokenVersion + 1") }, {
+        where: { id: full.id, passwordHash: full.passwordHash, tokenVersion: req.user.tokenVersion }, transaction,
+      });
+      if (!changed) throw Object.assign(new Error("Phiên đăng nhập đã thay đổi. Vui lòng đăng nhập lại."), { status: 401, code: "SESSION_REVOKED" });
+      await PasswordReset.update({ used: true }, { where: { userId: full.id, used: false }, transaction });
+    });
     res.json({ success: true, data: { message: "Đổi mật khẩu thành công." } });
   } catch (err) {
     next(err);
@@ -187,14 +194,14 @@ router.post("/change-password", authMiddleware, async (req, res, next) => {
 router.post("/forgot-password", authLimiter, async (req, res, next) => {
   try {
     const { email } = req.body;
-    if (!email) {
+    if (typeof email !== "string" || !email.trim()) {
       return res.status(400).json({ success: false, error: { code: "MISSING_EMAIL", message: "Vui lòng nhập email." } });
     }
     if (!isMailerConfigured()) {
       return res.status(503).json({ success: false, error: { code: "MAILER_NOT_CONFIGURED", message: "Chức năng gửi email chưa được cấu hình." } });
     }
 
-    const user = await User.findOne({ where: { email: email.toLowerCase() } });
+    const user = await User.findOne({ where: { email: email.toLowerCase().trim() } });
     if (user) {
       const latest = await PasswordReset.findOne({
         where: { userId: user.id, used: false },
@@ -230,7 +237,7 @@ router.post("/forgot-password", authLimiter, async (req, res, next) => {
 router.post("/reset-password", authLimiter, async (req, res, next) => {
   try {
     const { email, otp, newPassword } = req.body;
-    if (!email || !otp || !newPassword || newPassword.length < 6) {
+    if (typeof email !== "string" || typeof otp !== "string" || typeof newPassword !== "string" || !email.trim() || !/^\d{6}$/.test(otp.trim()) || newPassword.length < 6) {
       return res.status(400).json({ success: false, error: { code: "INVALID_INPUT", message: "Dữ liệu không hợp lệ." } });
     }
 
@@ -242,7 +249,7 @@ router.post("/reset-password", authLimiter, async (req, res, next) => {
         error: { code: "OTP_LOCKED", message: "Bạn đã nhập sai quá nhiều lần. Mã đã bị vô hiệu hóa, vui lòng yêu cầu mã mới." },
       });
 
-    const user = await User.findOne({ where: { email: email.toLowerCase() } });
+    const user = await User.findOne({ where: { email: email.toLowerCase().trim() } });
     if (!user) return invalidOtp();
 
     const reset = await PasswordReset.findOne({
@@ -263,15 +270,18 @@ router.post("/reset-password", authLimiter, async (req, res, next) => {
 
     if (!safeEqualHex(reset.otpHash, hashOtp(String(otp).trim()))) return invalidOtp();
 
-    // Đánh dấu đã dùng nguyên tử: nếu 2 request đúng mã đến cùng lúc, chỉ 1 request thắng.
-    const [consumed] = await PasswordReset.update({ used: true }, { where: { id: reset.id, used: false } });
-    if (consumed === 0) return invalidOtp();
-
-    user.passwordHash = await bcrypt.hash(newPassword, 10);
-    await user.save();
-
-    // Vô hiệu hóa mọi mã còn lại của user sau khi đổi mật khẩu thành công.
-    await PasswordReset.update({ used: true }, { where: { userId: user.id, used: false } });
+    const passwordHash = await bcrypt.hash(newPassword, 10);
+    // Consuming the OTP, changing the password and revoking sessions commit together.
+    const changed = await sequelize.transaction(async (transaction) => {
+      const [consumed] = await PasswordReset.update({ used: true }, {
+        where: { id: reset.id, used: false, expiresAt: { [Op.gt]: new Date() } }, transaction,
+      });
+      if (consumed === 0) return false;
+      await User.update({ passwordHash, tokenVersion: literal("tokenVersion + 1") }, { where: { id: user.id }, transaction });
+      await PasswordReset.update({ used: true }, { where: { userId: user.id, used: false }, transaction });
+      return true;
+    });
+    if (!changed) return invalidOtp();
 
     res.json({ success: true, data: { message: "Đặt lại mật khẩu thành công. Vui lòng đăng nhập." } });
   } catch (err) {

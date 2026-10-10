@@ -6,6 +6,7 @@ const Message = sequelize.define(
   {
     id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
     conversationId: { type: DataTypes.INTEGER, allowNull: false },
+    requestId: { type: DataTypes.STRING(100), allowNull: true, defaultValue: null },
     role: {
       type: DataTypes.STRING(10),
       allowNull: false,

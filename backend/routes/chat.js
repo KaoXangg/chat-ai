@@ -10,9 +10,13 @@ import { chatLimiter } from "../middleware/rateLimit.js";
 import { streamWithFallback, generateConversationTitle, AI_ERROR_CODES } from "../providers/aiRouter.js";
 import { searchWeb, isWebSearchConfigured } from "../providers/webSearch.js";
 import { aiLanguageDirective } from "../utils/languages.js";
+import { serializeChat } from "../utils/chatLock.js";
+import { validateIdParam } from "../utils/validation.js";
 
 const router = express.Router();
 router.use(authMiddleware);
+router.param("conversationId", validateIdParam);
+router.param("messageId", validateIdParam);
 router.use((req, res, next) => {
   const controller = new AbortController();
   req.chatSignal = controller.signal;
@@ -48,6 +52,21 @@ async function loadModelCatalog() {
 
 function sseSend(res, data) {
   if (!res.destroyed && !res.writableEnded) res.write(`data: ${JSON.stringify(data)}\n\n`);
+}
+
+function startSSE(res, userMessageId) {
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+  res.setHeader("X-Accel-Buffering", "no");
+  res.flushHeaders();
+  sseSend(res, { started: true, userMessageId: userMessageId == null ? undefined : String(userMessageId) });
+}
+
+async function touchConversation(conversation, transaction) {
+  conversation.setDataValue("updatedAt", new Date());
+  conversation.changed("updatedAt", true);
+  await conversation.save({ transaction });
 }
 
 function jsonError(res, status, code, message) {
@@ -112,11 +131,6 @@ async function getWebContext(useWebSearch, query, signal) {
 async function runStream(req, res, conversation, messagesForAI, { webSources = [], userMessageId = null, replaceMessageId = null, replaceAfterId = null } = {}) {
   const signal = req.chatSignal;
   if (signal.aborted || res.destroyed) return;
-  res.setHeader("Content-Type", "text/event-stream");
-  res.setHeader("Cache-Control", "no-cache");
-  res.setHeader("Connection", "keep-alive");
-  res.setHeader("X-Accel-Buffering", "no");
-  res.flushHeaders();
 
   let fullResponse = "";
   let usedProvider = conversation.provider;
@@ -125,9 +139,14 @@ async function runStream(req, res, conversation, messagesForAI, { webSources = [
   let assistantMessage = null;
   let usageRecorded = false;
   const userId = userMessageId !== null && userMessageId !== undefined ? String(userMessageId) : undefined;
-  sseSend(res, { started: true, userMessageId: userId });
-
   try {
+    startSSE(res, userMessageId);
+    // Acknowledge durable mutations before any title, web-search or history preparation.
+    if (typeof messagesForAI === "function") {
+      const prepared = await messagesForAI();
+      messagesForAI = prepared.messages;
+      webSources = prepared.webSources;
+    }
     const catalog = await loadModelCatalog();
     // Model mà người dùng đã dùng hết hạn mức token hôm nay sẽ bị router bỏ qua.
     const excludedModels = await getExhaustedModels(req.user.id, catalog);
@@ -158,11 +177,11 @@ async function runStream(req, res, conversation, messagesForAI, { webSources = [
           transaction,
         });
       }
-      await conversation.save({ transaction });
+      await touchConversation(conversation, transaction);
+      await recordUsage({ userId: req.user.id, provider: usedProvider, modelId: usedModel, usage }, { transaction, strict: true });
       return replacement;
     });
 
-    await recordUsage({ userId: req.user.id, provider: usedProvider, modelId: usedModel, usage });
     usageRecorded = true;
 
     sseSend(res, {
@@ -210,9 +229,15 @@ async function runStream(req, res, conversation, messagesForAI, { webSources = [
   }
 }
 
-router.post("/:conversationId/stream", chatLimiter, async (req, res, next) => {
+router.post("/:conversationId/stream", chatLimiter, serializeChat(async (req, res, next) => {
   try {
-    const { content, image, images, useWebSearch } = req.body;
+    const { content, image, images, useWebSearch, requestId } = req.body;
+    if (images !== undefined && (!Array.isArray(images) || images.length > MAX_IMAGES_PER_MESSAGE)) {
+      return jsonError(res, 400, "INVALID_IMAGE", "Chỉ được gửi tối đa 4 ảnh mỗi tin nhắn.");
+    }
+    if (requestId !== undefined && (typeof requestId !== "string" || !/^[A-Za-z0-9_-]{1,100}$/.test(requestId))) {
+      return jsonError(res, 400, "INVALID_INPUT", "Mã yêu cầu không hợp lệ.");
+    }
     if (typeof content !== "string" || !content.trim()) {
       return jsonError(res, 400, "EMPTY_MESSAGE", "Nội dung không được để trống.");
     }
@@ -232,42 +257,67 @@ router.post("/:conversationId/stream", chatLimiter, async (req, res, next) => {
       const selected = await AIModel.findOne({
         where: { provider: conversation.provider, modelId: conversation.model, enabled: true },
       });
-      const canSeeImages = selected ? selected.capabilities.includes("vision") : conversation.provider === "gemini";
+      const canSeeImages = selected?.capabilities?.includes("vision");
       if (!canSeeImages) {
         return jsonError(res, 400, "IMAGE_NOT_SUPPORTED", "Mô hình đang chọn không hỗ trợ phân tích hình ảnh. Hãy chọn mô hình có nhãn Vision.");
       }
       for (const img of imageList) {
-        if (!img?.data || !img?.mimeType || img.data.length > MAX_IMAGE_BASE64_LENGTH) {
+        if (typeof img?.data !== "string" || !img.data || typeof img.mimeType !== "string"
+          || !/^image\/(png|jpeg|jpg|gif|webp|heic|heif|avif)$/i.test(img.mimeType)
+          || img.data.length > MAX_IMAGE_BASE64_LENGTH || !/^[A-Za-z0-9+/]+={0,2}$/.test(img.data)
+          || Buffer.byteLength(img.data, "base64") > 6 * 1024 * 1024) {
           return jsonError(res, 400, "INVALID_IMAGE", "Có ảnh không hợp lệ hoặc quá lớn (tối đa 6MB mỗi ảnh).");
         }
       }
     }
 
-    const userMessage = await Message.create({
-      conversationId: conversation.id,
-      role: "user",
-      content: content.trim(),
-      imageBase64: imageList[0]?.data || null,
-      imageMimeType: imageList[0]?.mimeType || null,
-      images: imageList.length ? imageList : null,
-    });
-
-    if (["Cuoc tro chuyen moi", "Cuộc trò chuyện mới"].includes(conversation.title)) {
-      conversation.title = await generateConversationTitle(content.trim(), { signal: req.chatSignal });
-      // Lưu ngay để tiêu đề không bị mất nếu lượt trả lời sau đó gặp lỗi.
-      await conversation.save();
+    let userMessage = requestId && await Message.findOne({ where: { conversationId: conversation.id, role: "user", requestId } });
+    let replacement = null;
+    if (userMessage) {
+      if (userMessage.content !== content.trim()) return jsonError(res, 409, "INVALID_INPUT", "Mã yêu cầu đã dùng cho nội dung khác.");
+      const nextQuestion = await Message.findOne({
+        where: { conversationId: conversation.id, role: "user", id: { [Op.gt]: userMessage.id } }, order: [["id", "ASC"]],
+      });
+      replacement = await Message.findOne({
+        where: { conversationId: conversation.id, role: "assistant", id: { [Op.gt]: userMessage.id, ...(nextQuestion ? { [Op.lt]: nextQuestion.id } : {}) } },
+        order: [["id", "DESC"]],
+      });
+      if (replacement && !replacement.interrupted && !replacement.isError) {
+        startSSE(res, userMessage.id);
+        sseSend(res, { token: replacement.content });
+        sseSend(res, { done: true, messageId: replacement._id, userMessageId: userMessage._id, provider: replacement.provider, model: replacement.model, sources: replacement.sources });
+        return res.end();
+      }
+      if (nextQuestion) return jsonError(res, 409, "REQUEST_ALREADY_PROCESSED", "Tin nhắn đã được lưu. Hãy tải lại hội thoại.");
+    } else {
+      userMessage = await sequelize.transaction(async (transaction) => {
+        const message = await Message.create({
+          conversationId: conversation.id, requestId: requestId || null,
+          role: "user", content: content.trim(),
+          imageBase64: imageList[0]?.data || null,
+          imageMimeType: imageList[0]?.mimeType || null,
+          images: imageList.length ? imageList : null,
+        }, { transaction });
+        await touchConversation(conversation, transaction);
+        return message;
+      });
     }
-
-    const { webSources, webContext } = await getWebContext(useWebSearch, content.trim(), req.chatSignal);
-    const messagesForAI = await buildHistory(conversation.id, webContext, req.user.aiLanguage);
-    await runStream(req, res, conversation, messagesForAI, { webSources, userMessageId: userMessage.id });
+    req.chatMutation = { persisted: true, userMessageId: String(userMessage.id) };
+    await runStream(req, res, conversation, async () => {
+      if (["Cuoc tro chuyen moi", "Cuộc trò chuyện mới"].includes(conversation.title)) {
+        conversation.title = await generateConversationTitle(content.trim(), { signal: req.chatSignal });
+        await touchConversation(conversation);
+      }
+      const { webSources, webContext } = await getWebContext(useWebSearch, content.trim(), req.chatSignal);
+      return { webSources, messages: await buildHistory(conversation.id, webContext, req.user.aiLanguage, userMessage.id) };
+    }, { userMessageId: userMessage.id, replaceMessageId: replacement?.id, replaceAfterId: userMessage.id });
   } catch (err) {
     if (req.chatSignal.aborted) return;
     next(err);
   }
-});
+}));
 
-router.post("/:conversationId/regenerate", chatLimiter, async (req, res, next) => {
+router.post("/:conversationId/regenerate", chatLimiter, serializeChat(async (req, res, next) => {
   try {
     const conversation = await Conversation.findOne({ where: { id: req.params.conversationId, userId: req.user.id } });
     if (!conversation) {
@@ -283,14 +333,14 @@ router.post("/:conversationId/regenerate", chatLimiter, async (req, res, next) =
   } catch (err) {
     next(err);
   }
-});
+}));
 
 /**
  * Sửa một tin nhắn của người dùng và gửi lại:
  * cập nhật nội dung tin nhắn, xóa toàn bộ tin nhắn phía sau nó, rồi stream câu trả lời mới.
  * Ảnh đính kèm của tin nhắn gốc được giữ nguyên.
  */
-router.post("/:conversationId/edit/:messageId", chatLimiter, async (req, res, next) => {
+router.post("/:conversationId/edit/:messageId", chatLimiter, serializeChat(async (req, res, next) => {
   try {
     const content = typeof req.body.content === "string" ? req.body.content.trim() : "";
     if (!content) {
@@ -317,15 +367,17 @@ router.post("/:conversationId/edit/:messageId", chatLimiter, async (req, res, ne
       });
       target.content = content;
       await target.save({ transaction });
+      await touchConversation(conversation, transaction);
     });
-
-    const { webSources, webContext } = await getWebContext(req.body.useWebSearch, content, req.chatSignal);
-    const messagesForAI = await buildHistory(conversation.id, webContext, req.user.aiLanguage);
-    await runStream(req, res, conversation, messagesForAI, { webSources, userMessageId: target.id });
+    req.chatMutation = { persisted: true, userMessageId: String(target.id) };
+    await runStream(req, res, conversation, async () => {
+      const { webSources, webContext } = await getWebContext(req.body.useWebSearch, content, req.chatSignal);
+      return { webSources, messages: await buildHistory(conversation.id, webContext, req.user.aiLanguage, target.id) };
+    }, { userMessageId: target.id });
   } catch (err) {
     next(err);
   }
-});
+}));
 
 router.patch("/message/:messageId/feedback", async (req, res, next) => {
   try {

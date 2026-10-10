@@ -1,21 +1,24 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import api from "../api/axios.js";
+import { handleSessionError } from "../api/session.js";
 import { useI18n } from "../i18n/I18nContext.jsx";
 
 /**
  * Lỗi xảy ra TRƯỚC khi máy chủ bắt đầu stream (HTTP 4xx/5xx, mất mạng khi gửi...).
- * Khi đó máy chủ chưa lưu/thay đổi gì nên client có thể gửi lại nguyên yêu cầu.
+ * Metadata cho biết máy chủ đã lưu hay chưa; mất mạng trước phản hồi vẫn có thể đã lưu.
  */
 class StreamRequestError extends Error {
-  constructor(message, code) {
+  constructor(message, code, metadata = {}) {
     super(message);
     this.code = code;
+    this.metadata = metadata;
   }
 }
 
 /**
  * handlers.onError(message, code, { preStream, userMessageId })
- *  - preStream: true nếu lỗi xảy ra trước khi stream bắt đầu.
+ *  - preStream: true nếu chưa nhận stream và máy chủ chưa xác nhận đã lưu.
+ *  - uncertain: true nếu mất mạng, cần gửi lại cùng requestId hoặc tải lại dữ liệu.
  *  - userMessageId: id thật của tin nhắn người dùng (nếu máy chủ đã lưu).
  */
 export function useChatStream() {
@@ -44,6 +47,7 @@ export function useChatStream() {
     const controller = new AbortController();
     abortRef.current = controller;
     let started = false;
+    let finished = false;
 
     try {
       const token = localStorage.getItem("chatai_token");
@@ -63,21 +67,13 @@ export function useChatStream() {
         throw new StreamRequestError("", "NETWORK_ERROR");
       }
 
-      if (res.status === 401) {
-        // Same behaviour as the axios interceptor: expired/invalid token -> back to login.
-        localStorage.removeItem("chatai_token");
-        localStorage.removeItem("chatai_user");
-        if (!window.location.pathname.startsWith("/login")) {
-          window.location.href = "/login";
-        }
-        throw new StreamRequestError("", "INVALID_TOKEN");
-      }
-
       if (!res.ok || !res.body) {
         const errJson = await res.json().catch(() => null);
+        handleSessionError(res.status, errJson?.error?.code);
         throw new StreamRequestError(
           errJson?.error?.message || "",
-          errJson?.error?.code || (res.status === 429 ? "RATE_LIMITED" : "REQUEST_FAILED")
+          errJson?.error?.code || (res.status === 429 ? "RATE_LIMITED" : "REQUEST_FAILED"),
+          errJson?.data || {}
         );
       }
 
@@ -85,14 +81,13 @@ export function useChatStream() {
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
-      let finished = false;
 
       while (true) {
         const { value, done } = await reader.read();
         if (done) break;
         buffer += decoder.decode(value, { stream: true });
 
-        const parts = buffer.split("\n\n");
+        const parts = buffer.split(/\r?\n\r?\n/);
         buffer = parts.pop();
 
         for (const part of parts) {
@@ -132,10 +127,11 @@ export function useChatStream() {
         onError?.(message, "NETWORK_ERROR", { preStream: false });
       }
     } catch (err) {
+      if (finished) return;
       if (controller.signal.aborted) {
         onStop?.();
       } else {
-        const preStream = !started;
+        const preStream = !started && !err.metadata?.persisted;
         const isRequestError = err instanceof StreamRequestError;
         const code = isRequestError ? err.code : "NETWORK_ERROR";
         const message =
@@ -143,7 +139,7 @@ export function useChatStream() {
             ? messageForCode(code === "NETWORK_ERROR" ? "NETWORK" : code, isRequestError ? err.message : "")
             : tRef.current("chat.stream.interrupted");
         setStreamError(message);
-        onError?.(message, code, { preStream });
+        onError?.(message, code, { ...err.metadata, preStream, uncertain: code === "NETWORK_ERROR" });
       }
     } finally {
       if (abortRef.current === controller) abortRef.current = null;
@@ -156,7 +152,7 @@ export function useChatStream() {
       const base = api.defaults.baseURL;
       return runSSE(
         `${base}/chat/${conversationId}/stream`,
-        { content, images: options?.images || [], useWebSearch: Boolean(options?.useWebSearch) },
+        { content, images: options?.images || [], useWebSearch: Boolean(options?.useWebSearch), requestId: options?.requestId },
         handlers
       );
     },

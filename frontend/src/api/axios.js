@@ -1,7 +1,8 @@
 import axios from "axios";
+import { handleSessionError } from "./session.js";
 
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || "http://localhost:5000/api",
+  baseURL: (import.meta.env.VITE_API_URL || "http://localhost:5000/api").replace(/\/+$/, ""),
 });
 
 api.interceptors.request.use((config) => {
@@ -13,13 +14,8 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (res) => res,
   (err) => {
-    if (err.response?.status === 401) {
-      localStorage.removeItem("chatai_token");
-      localStorage.removeItem("chatai_user");
-      if (!window.location.pathname.startsWith("/login")) {
-        window.location.href = "/login";
-      }
-    }
+    const code = err.response?.data?.error?.code;
+    handleSessionError(err.response?.status, code);
     return Promise.reject(err);
   }
 );

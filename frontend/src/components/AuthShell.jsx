@@ -45,7 +45,7 @@ function AuthTabs() {
                   key={tab.to}
                   to={tab.to}
                   aria-current={active ? "page" : undefined}
-                  className="relative flex-1 text-center py-1.5 text-xs font-semibold tracking-normal z-10 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40"
+                  className="relative flex-1 text-center py-1.5 text-xs font-semibold tracking-normal z-10 rounded-lg outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500/40"
                 >
                   {active && (
                     <motion.span
@@ -136,7 +136,7 @@ export default function AuthShell() {
         <header className="relative z-30 w-full px-4 py-2.5 sm:px-8 sm:py-3 flex items-center justify-between max-w-6xl mx-auto shrink-0">
           <Link
             to="/login"
-            className="group flex items-center gap-2.5 outline-none rounded-lg focus-visible:ring-2 focus-visible:ring-brand-500/40"
+            className="group flex items-center gap-2.5 outline-hidden rounded-lg focus-visible:ring-2 focus-visible:ring-brand-500/40"
             aria-label="Chat AI Home"
           >
             <BrandMark size={28} className="transition-transform duration-200 group-hover:scale-105" />

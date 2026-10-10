@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import clsx from "clsx";
 import { Send, Square, Paperclip, Globe, X, ImagePlus } from "lucide-react";
@@ -8,11 +8,15 @@ import { useI18n } from "../i18n/I18nContext.jsx";
 
 const MAX_IMAGE_BYTES = 6 * 1024 * 1024;
 const MAX_IMAGES = 4;
+const IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/jpg", "image/gif", "image/webp", "image/heic", "image/heif", "image/avif"]);
 
 export default function ChatInput({ onSend, isStreaming, disabled = false, onStop, allowImage = false }) {
   const [value, setValue] = useState("");
   const [focused, setFocused] = useState(false);
   const [images, setImages] = useState([]); // [{ id, previewUrl, mimeType, data }]
+  const [pendingImages, setPendingImages] = useState(0);
+  const imagesRef = useRef([]);
+  const readersRef = useRef(new Map());
   const [isDraggingOver, setIsDraggingOver] = useState(false);
   const [webSearchEnabled, setWebSearchEnabled] = useState(false);
   const textareaRef = useRef(null);
@@ -20,6 +24,25 @@ export default function ChatInput({ onSend, isStreaming, disabled = false, onSto
   const dragCounterRef = useRef(0);
   const toast = useToast();
   const { t } = useI18n();
+
+  const updateImages = (update) => {
+    imagesRef.current = typeof update === "function" ? update(imagesRef.current) : update;
+    setImages(imagesRef.current);
+  };
+
+  useEffect(() => () => {
+    for (const reader of readersRef.current.values()) reader.abort();
+    readersRef.current.clear();
+  }, []);
+
+  useEffect(() => {
+    if (allowImage) return;
+    const readers = [...readersRef.current.values()];
+    readersRef.current.clear();
+    readers.forEach(reader => reader.abort());
+    setPendingImages(0);
+    updateImages([]);
+  }, [allowImage]);
 
   const resizeTextarea = () => {
     const el = textareaRef.current;
@@ -38,7 +61,7 @@ export default function ChatInput({ onSend, isStreaming, disabled = false, onSto
     const files = Array.from(fileList || []);
     if (!files.length) return;
 
-    const room = MAX_IMAGES - images.length;
+    const room = MAX_IMAGES - imagesRef.current.length - readersRef.current.size;
     if (room <= 0) {
       toast.warning(t("input.maxImages", { max: MAX_IMAGES }));
       return;
@@ -50,8 +73,8 @@ export default function ChatInput({ onSend, isStreaming, disabled = false, onSto
     }
 
     toProcess.forEach((file) => {
-      if (!file.type.startsWith("image/")) {
-        toast.error(t("input.notImage", { name: file.name }));
+      if (!IMAGE_TYPES.has(file.type.toLowerCase())) {
+        toast.error(t("error.INVALID_IMAGE"));
         return;
       }
       if (file.size > MAX_IMAGE_BYTES) {
@@ -61,12 +84,21 @@ export default function ChatInput({ onSend, isStreaming, disabled = false, onSto
 
       const reader = new FileReader();
       const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      readersRef.current.set(id, reader);
+      setPendingImages(readersRef.current.size);
+      const finish = () => {
+        if (!readersRef.current.delete(id)) return false;
+        setPendingImages(readersRef.current.size);
+        return true;
+      };
       reader.onload = () => {
+        if (!finish()) return;
         const dataUrl = reader.result;
         const base64 = dataUrl.split(",")[1];
-        setImages((prev) => [...prev, { id, previewUrl: dataUrl, mimeType: file.type, data: base64 }]);
+        updateImages((prev) => [...prev, { id, previewUrl: dataUrl, mimeType: file.type.toLowerCase(), data: base64 }]);
       };
-      reader.onerror = () => toast.error(t("input.readFail", { name: file.name }));
+      reader.onerror = () => { if (finish()) toast.error(t("input.readFail", { name: file.name })); };
+      reader.onabort = finish;
       reader.readAsDataURL(file);
     });
   };
@@ -77,7 +109,7 @@ export default function ChatInput({ onSend, isStreaming, disabled = false, onSto
   };
 
   const removeImage = (id) => {
-    setImages((prev) => prev.filter((img) => img.id !== id));
+    updateImages((prev) => prev.filter((img) => img.id !== id));
   };
 
   const handleDragEnter = (e) => {
@@ -111,17 +143,18 @@ export default function ChatInput({ onSend, isStreaming, disabled = false, onSto
 
   const handleSubmit = () => {
     const trimmed = value.trim();
-    if ((!trimmed && images.length === 0) || isStreaming) return;
+    if ((!trimmed && imagesRef.current.length === 0) || isStreaming || disabled || readersRef.current.size) return;
     onSend(trimmed || t("input.describe"), {
-      images: images.map(({ mimeType, data }) => ({ mimeType, data })),
+      images: allowImage ? imagesRef.current.map(({ mimeType, data }) => ({ mimeType, data })) : [],
       useWebSearch: webSearchEnabled,
     });
     setValue("");
-    setImages([]);
+    updateImages([]);
     if (textareaRef.current) textareaRef.current.style.height = "auto";
   };
 
   const handleKeyDown = (e) => {
+    if (e.nativeEvent.isComposing || e.nativeEvent.keyCode === 229) return;
     if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
       e.preventDefault();
       handleSubmit();
@@ -148,7 +181,7 @@ export default function ChatInput({ onSend, isStreaming, disabled = false, onSto
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="absolute -inset-2 z-10 rounded-[2rem] border-2 border-dashed border-brand-400 bg-brand-500/10 backdrop-blur-sm flex items-center justify-center gap-2 text-sm font-medium text-brand-600 dark:text-brand-300 pointer-events-none"
+              className="absolute -inset-2 z-10 rounded-[2rem] border-2 border-dashed border-brand-400 bg-brand-500/10 backdrop-blur-xs flex items-center justify-center gap-2 text-sm font-medium text-brand-600 dark:text-brand-300 pointer-events-none"
             >
               <ImagePlus size={18} /> {t("input.dropHere")}
             </motion.div>
@@ -179,9 +212,10 @@ export default function ChatInput({ onSend, isStreaming, disabled = false, onSto
                 </button>
               </motion.div>
             ))}
-            {images.length < MAX_IMAGES && (
+            {images.length + pendingImages < MAX_IMAGES && (
               <button
                 onClick={() => fileInputRef.current?.click()}
+                disabled={disabled || !allowImage}
                 aria-label={t("input.addImage")}
                 className="h-16 w-16 rounded-xl border border-dashed border-edge-light dark:border-edge-dark flex items-center justify-center opacity-50 hover:opacity-90 hover:border-brand-400 transition-colors"
               >
@@ -200,7 +234,7 @@ export default function ChatInput({ onSend, isStreaming, disabled = false, onSto
           <input
             ref={fileInputRef}
             type="file"
-            accept="image/*"
+            accept="image/png,image/jpeg,image/gif,image/webp,image/heic,image/heif,image/avif"
             multiple
             className="hidden"
             onChange={handleFileChange}
@@ -209,7 +243,7 @@ export default function ChatInput({ onSend, isStreaming, disabled = false, onSto
           <Tooltip label={allowImage ? t("input.attachTip", { max: MAX_IMAGES }) : t("input.attachNoVision")} side="top" align="start" className="inline-flex shrink-0 [&>button:disabled]:pointer-events-none">
 <button
             onClick={() => allowImage && fileInputRef.current?.click()}
-            disabled={!allowImage || disabled || images.length >= MAX_IMAGES}
+            disabled={!allowImage || disabled || images.length + pendingImages >= MAX_IMAGES}
             aria-label={allowImage ? t("input.attachAria") : t("input.attachAriaNoVision")}
             className="shrink-0 w-9 h-9 rounded-2xl flex items-center justify-center hover:bg-black/5 dark:hover:bg-white/10 disabled:opacity-30 transition-colors"
           >
@@ -250,9 +284,10 @@ export default function ChatInput({ onSend, isStreaming, disabled = false, onSto
             }}
             disabled={disabled}
             rows={1}
+            maxLength={32000}
             dir="auto"
             placeholder={t("input.prompt")}
-            className="flex-1 resize-none bg-transparent outline-none text-[15px] py-2 max-h-48 placeholder:text-black/40 dark:placeholder:text-white/40"
+            className="flex-1 resize-none bg-transparent outline-hidden text-[15px] py-2 max-h-48 placeholder:text-black/40 dark:placeholder:text-white/40"
           />
           <Tooltip
             label={isStreaming ? t("input.stop") : t("input.send")}
@@ -283,7 +318,7 @@ export default function ChatInput({ onSend, isStreaming, disabled = false, onSto
                 exit={{ scale: 0.7, opacity: 0 }}
                 whileTap={{ scale: 0.9 }}
                 onClick={handleSubmit}
-                disabled={(!value.trim() && images.length === 0) || disabled}
+                disabled={(!value.trim() && images.length === 0) || disabled || pendingImages > 0}
                 className="shrink-0 w-10 h-10 rounded-xl bg-brand-600 hover:bg-brand-700 disabled:opacity-30 text-white flex items-center justify-center transition-colors"
                 aria-label={t("input.sendAria")}
               >

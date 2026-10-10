@@ -1,9 +1,12 @@
 /* ============================================================
-   Chat AI - SQL Server Schema (idempotent: chạy lại nhiều lần vẫn an toàn,
-   KHÔNG xóa dữ liệu hiện có).
+   Chat AI - SQL Server: cấu trúc đầy đủ + nâng cấp DB cũ + hạn mức token.
+   Có thể chạy lại; KHÔNG xóa bảng hoặc dữ liệu hiện có.
    Chạy bằng SSMS / Azure Data Studio / sqlcmd. Backend cũng tự tạo bảng thiếu
    khi khởi động (sequelize.sync) nên file này chủ yếu để cài mới hoặc nâng cấp.
    Thứ tự: Users -> Conversations -> Messages; AIModels, PasswordResets, TokenUsages.
+   Phần cuối đặt hạn mức cho model có dailyTokenLimit = 0; giữ nguyên hạn mức khác 0.
+   Tài khoản admin và danh sách model được tạo bằng npm run seed trong backend.
+   Với DB mới, chạy lại file này sau khi seed để áp dụng hạn mức cho model vừa tạo.
    ============================================================ */
 
 IF DB_ID(N'chat_ai') IS NULL
@@ -11,6 +14,9 @@ IF DB_ID(N'chat_ai') IS NULL
 GO
 
 USE chat_ai;
+GO
+
+SET NOCOUNT ON;
 GO
 
 /* ---------- Users ---------- */
@@ -21,9 +27,12 @@ BEGIN
         username      NVARCHAR(32)   NOT NULL,
         email         NVARCHAR(255)  NOT NULL,
         passwordHash  NVARCHAR(255)  NOT NULL,
+        tokenVersion  INT            NOT NULL CONSTRAINT DF_Users_tokenVersion DEFAULT (0),
         role          NVARCHAR(10)   NOT NULL CONSTRAINT DF_Users_role DEFAULT ('user'),
         status        NVARCHAR(10)   NOT NULL CONSTRAINT DF_Users_status DEFAULT ('active'),
         avatar        NVARCHAR(500)  NULL     CONSTRAINT DF_Users_avatar DEFAULT (''),
+        uiLanguage    NVARCHAR(10)   NULL,
+        aiLanguage    NVARCHAR(10)   NOT NULL CONSTRAINT DF_Users_aiLanguage DEFAULT ('auto'),
         createdAt     DATETIME2      NOT NULL CONSTRAINT DF_Users_createdAt DEFAULT (SYSUTCDATETIME()),
         updatedAt     DATETIME2      NOT NULL CONSTRAINT DF_Users_updatedAt DEFAULT (SYSUTCDATETIME()),
         CONSTRAINT UQ_Users_email UNIQUE (email),
@@ -33,9 +42,15 @@ BEGIN
 END
 GO
 
-/* Nâng cấp DB cũ: ngôn ngữ trả lời của AI do người dùng chọn ('auto' = theo tin nhắn) */
+/* Nâng cấp DB cũ: ngôn ngữ giao diện, ngôn ngữ AI và phiên đăng nhập */
+IF COL_LENGTH('dbo.Users', 'uiLanguage') IS NULL
+    ALTER TABLE dbo.Users ADD uiLanguage NVARCHAR(10) NULL;
+GO
 IF COL_LENGTH('dbo.Users', 'aiLanguage') IS NULL
-    ALTER TABLE dbo.Users ADD aiLanguage NVARCHAR(20) NOT NULL CONSTRAINT DF_Users_aiLanguage DEFAULT ('auto');
+    ALTER TABLE dbo.Users ADD aiLanguage NVARCHAR(10) NOT NULL CONSTRAINT DF_Users_aiLanguage DEFAULT ('auto');
+GO
+IF COL_LENGTH('dbo.Users', 'tokenVersion') IS NULL
+    ALTER TABLE dbo.Users ADD tokenVersion INT NOT NULL CONSTRAINT DF_Users_tokenVersion DEFAULT (0);
 GO
 
 /* ---------- Conversations ---------- */
@@ -64,6 +79,7 @@ BEGIN
     CREATE TABLE dbo.Messages (
         id              INT IDENTITY(1,1) PRIMARY KEY,
         conversationId  INT            NOT NULL,
+        requestId       NVARCHAR(100)  NULL,
         role            NVARCHAR(10)   NOT NULL,
         content         NVARCHAR(MAX)  NOT NULL,
         provider        NVARCHAR(50)   NULL,
@@ -92,7 +108,13 @@ IF COL_LENGTH('dbo.Messages', 'imageBase64')   IS NULL ALTER TABLE dbo.Messages 
 IF COL_LENGTH('dbo.Messages', 'imageMimeType') IS NULL ALTER TABLE dbo.Messages ADD imageMimeType NVARCHAR(50)  NULL;
 IF COL_LENGTH('dbo.Messages', 'images')        IS NULL ALTER TABLE dbo.Messages ADD images        NVARCHAR(MAX) NULL;
 IF COL_LENGTH('dbo.Messages', 'sources')       IS NULL ALTER TABLE dbo.Messages ADD sources       NVARCHAR(MAX) NULL;
+IF COL_LENGTH('dbo.Messages', 'feedback')      IS NULL ALTER TABLE dbo.Messages ADD feedback      NVARCHAR(10) NULL;
+IF COL_LENGTH('dbo.Messages', 'isError')       IS NULL ALTER TABLE dbo.Messages ADD isError BIT NOT NULL CONSTRAINT DF_Messages_isError DEFAULT (0);
 IF COL_LENGTH('dbo.Messages', 'interrupted')   IS NULL ALTER TABLE dbo.Messages ADD interrupted BIT NOT NULL CONSTRAINT DF_Messages_interrupted DEFAULT (0);
+IF COL_LENGTH('dbo.Messages', 'requestId')     IS NULL ALTER TABLE dbo.Messages ADD requestId NVARCHAR(100) NULL;
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'UQ_Messages_requestId' AND object_id = OBJECT_ID('dbo.Messages'))
+    CREATE UNIQUE INDEX UQ_Messages_requestId ON dbo.Messages(conversationId, requestId) WHERE requestId IS NOT NULL;
 GO
 
 /* ---------- AIModels ---------- */
@@ -129,11 +151,15 @@ BEGIN
         otpHash     NVARCHAR(255)  NOT NULL,
         expiresAt   DATETIME2      NOT NULL,
         used        BIT            NOT NULL CONSTRAINT DF_PasswordResets_used DEFAULT (0),
+        attempts    INT            NOT NULL CONSTRAINT DF_PasswordResets_attempts DEFAULT (0),
         createdAt   DATETIME2      NOT NULL CONSTRAINT DF_PasswordResets_createdAt DEFAULT (SYSUTCDATETIME()),
         updatedAt   DATETIME2      NOT NULL CONSTRAINT DF_PasswordResets_updatedAt DEFAULT (SYSUTCDATETIME()),
         CONSTRAINT FK_PasswordResets_User FOREIGN KEY (userId) REFERENCES dbo.Users(id) ON DELETE CASCADE
     );
 END
+GO
+IF COL_LENGTH('dbo.PasswordResets', 'attempts') IS NULL
+    ALTER TABLE dbo.PasswordResets ADD attempts INT NOT NULL CONSTRAINT DF_PasswordResets_attempts DEFAULT (0);
 GO
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_PasswordResets_userId' AND object_id = OBJECT_ID('dbo.PasswordResets'))
     CREATE INDEX IX_PasswordResets_userId ON dbo.PasswordResets(userId);
@@ -160,5 +186,29 @@ IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_TokenUsages_userId_cre
     CREATE INDEX IX_TokenUsages_userId_createdAt ON dbo.TokenUsages(userId, createdAt);
 GO
 
-PRINT 'Schema Chat AI da san sang.';
+/* ---------- Hạn mức token mỗi người dùng / model / ngày ----------
+   Trong ứng dụng, 0 = không giới hạn. Khi chạy file này, các model đang có
+   giá trị 0 sẽ nhận hạn mức dưới đây. Hạn mức khác 0 không bị ghi đè.
+   Nếu bảng AIModels chưa có model, chạy npm run seed rồi chạy lại file này.
+   Muốn sử dụng không giới hạn, đặt lại 0 trong Admin sau khi chạy script.
+   --------------------------------------------------------------- */
+SELECT DB_NAME() AS database_dang_dung, @@SERVERNAME AS may_chu;
+GO
+
+UPDATE dbo.AIModels
+SET dailyTokenLimit = CASE LOWER(provider)
+    WHEN 'gemini'     THEN 100000
+    WHEN 'groq'       THEN 50000
+    WHEN 'openrouter' THEN 30000
+    ELSE 50000
+END
+WHERE dailyTokenLimit = 0;
+GO
+
+SELECT displayName, provider, modelId, dailyTokenLimit
+FROM dbo.AIModels
+ORDER BY priority, id;
+GO
+
+PRINT N'Cấu trúc database và hạn mức token Chat AI đã sẵn sàng.';
 GO

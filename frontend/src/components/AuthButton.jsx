@@ -51,12 +51,12 @@ export default function AuthButton({
       aria-busy={loading || undefined}
       onClick={handleClick}
       className={clsx(
-        "relative w-full h-[38px] sm:h-10 overflow-hidden flex items-center justify-center gap-2 px-4 rounded-xl text-[13.5px] sm:text-sm font-semibold tracking-normal outline-none select-none",
+        "relative w-full h-[38px] sm:h-10 overflow-hidden flex items-center justify-center gap-2 px-4 rounded-xl text-[13.5px] sm:text-sm font-semibold tracking-normal outline-hidden select-none",
         "transition-[filter,box-shadow,background-color,border-color,opacity,transform] duration-150",
         "focus-visible:ring-2 focus-visible:ring-brand-500/40 focus-visible:ring-offset-1 focus-visible:ring-offset-transparent",
         isPrimary && [
           "bg-brand-600 hover:bg-brand-500 active:bg-brand-700 text-white shadow-xs shadow-brand-600/20",
-          !locked && !disabled && "hover:shadow-sm hover:shadow-brand-600/30",
+          !locked && !disabled && "hover:shadow-xs hover:shadow-brand-600/30",
           "disabled:opacity-60 disabled:pointer-events-none disabled:shadow-none",
           locked && "cursor-default",
         ],
@@ -74,12 +74,12 @@ export default function AuthButton({
         <>
           <span
             aria-hidden="true"
-            className="absolute inset-0 bg-gradient-to-b from-emerald-500 to-emerald-600 transition-opacity duration-300"
+            className="absolute inset-0 bg-linear-to-b from-emerald-500 to-emerald-600 transition-opacity duration-300"
             style={{ opacity: success ? 1 : 0 }}
           />
           <span
             aria-hidden="true"
-            className="absolute inset-0 bg-gradient-to-b from-red-500 to-red-600 transition-opacity duration-300"
+            className="absolute inset-0 bg-linear-to-b from-red-500 to-red-600 transition-opacity duration-300"
             style={{ opacity: error && !success && !loading ? 1 : 0 }}
           />
         </>

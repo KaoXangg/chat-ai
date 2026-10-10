@@ -5,19 +5,20 @@ import rehypeKatex from "rehype-katex";
 import "katex/dist/katex.min.css";
 import { PrismLight as SyntaxHighlighter } from "react-syntax-highlighter";
 import { oneDark, oneLight } from "react-syntax-highlighter/dist/esm/styles/prism";
-import { Copy, RotateCcw, ThumbsUp, ThumbsDown, Check, X, ChevronLeft, ChevronRight, Pencil, AlertTriangle } from "lucide-react";
+import { Copy, RotateCcw, ThumbsUp, ThumbsDown, Check, X, ChevronLeft, ChevronRight, Pencil, AlertTriangle, ImageOff } from "lucide-react";
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import clsx from "clsx";
 import BrandMark from "./BrandMark.jsx";
-import AuthenticatedImage from "./AuthenticatedImage.jsx";
 import Tooltip from "./Tooltip.jsx";
 import UserAvatar from "./UserAvatar.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
 import { useTheme } from "../context/ThemeContext.jsx";
 import { useI18n } from "../i18n/I18nContext.jsx";
 import { useModalA11y } from "../hooks/useModalA11y.js";
+import { useMessageImages } from "../hooks/useMessageImages.js";
 import { preprocessMath } from "../utils/mathPreprocess.js";
+import { extractCopyText } from "../utils/copyText.js";
 import javascript from "react-syntax-highlighter/dist/esm/languages/prism/javascript";
 import jsx from "react-syntax-highlighter/dist/esm/languages/prism/jsx";
 import typescript from "react-syntax-highlighter/dist/esm/languages/prism/typescript";
@@ -57,17 +58,6 @@ SyntaxHighlighter.registerLanguage("markdown", markdown);
 SyntaxHighlighter.registerLanguage("go", go);
 SyntaxHighlighter.registerLanguage("php", php);
 
-/** Normalizes the legacy single-image fields and the new `images` array into one list of data URLs. */
-function getImages(message) {
-  if (message.images?.length) {
-    return message.images.map((img) => img.url || `data:${img.mimeType};base64,${img.data}`);
-  }
-  if (message.imageBase64) {
-    return [`data:${message.imageMimeType};base64,${message.imageBase64}`];
-  }
-  return [];
-}
-
 function ImageGrid({ images, onOpen }) {
   const { t } = useI18n();
   if (images.length === 0) return null;
@@ -80,17 +70,31 @@ function ImageGrid({ images, onOpen }) {
 
   return (
     <div className={clsx("grid gap-1.5 mb-2", gridClass, images.length === 1 ? "max-w-[260px]" : "max-w-[300px]")}>
-      {images.map((src, i) => (
+      {images.map((image, i) => (
         <button
           key={i}
           type="button"
-          onClick={() => onOpen(i)}
+          onClick={() => image.src && onOpen(i)}
+          disabled={!image.src}
           className={clsx(
-            "relative rounded-xl overflow-hidden border border-white/20 focus:outline-none focus:ring-2 focus:ring-brand-400",
-            images.length === 1 ? "aspect-auto" : "aspect-square"
+            "relative rounded-xl overflow-hidden border border-white/20 focus:outline-hidden focus:ring-2 focus:ring-brand-400",
+            image.src && images.length === 1 ? "aspect-auto" : "aspect-square"
           )}
         >
-          <AuthenticatedImage src={src} alt={t("msg.imageAlt", { n: i + 1 })} className="w-full h-full object-cover" />
+          {image.src ? (
+            <img src={image.src} alt={t("msg.imageAlt", { n: i + 1 })} className="w-full h-full object-cover" />
+          ) : image.failed ? (
+            <span
+              role="img"
+              aria-label={t("msg.imageFailed")}
+              title={t("msg.imageFailed")}
+              className="w-full h-full min-h-[72px] min-w-[72px] flex items-center justify-center bg-black/10 dark:bg-white/10"
+            >
+              <ImageOff size={20} className="opacity-60" />
+            </span>
+          ) : (
+            <span aria-hidden="true" className="block w-full h-full min-h-[72px] min-w-[72px] animate-pulse bg-black/10 dark:bg-white/10" />
+          )}
         </button>
       ))}
     </div>
@@ -111,14 +115,14 @@ function Lightbox({ images, index, onClose, onNav }) {
     return () => document.removeEventListener("keydown", onKey);
   }, [index, images.length, onNav]);
 
-  if (index === null) return null;
+  if (index === null || !images[index]?.src) return null;
   return (
     <motion.div
       ref={dialogRef}
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-[120] bg-black/85 backdrop-blur-sm flex items-center justify-center px-4"
+      className="fixed inset-0 z-[120] bg-black/85 backdrop-blur-xs flex items-center justify-center px-4"
       onClick={onClose}
       role="dialog"
       aria-modal="true"
@@ -157,9 +161,11 @@ function Lightbox({ images, index, onClose, onNav }) {
         </>
       )}
 
-      <AuthenticatedImage
+      <motion.img
         key={index}
-        src={images[index]}
+        initial={{ opacity: 0, scale: 0.96 }}
+        animate={{ opacity: 1, scale: 1 }}
+        src={images[index]?.src}
         alt={t("msg.imageAlt", { n: index + 1 })}
         onClick={(e) => e.stopPropagation()}
         className="max-w-full max-h-[85vh] rounded-2xl object-contain"
@@ -237,63 +243,6 @@ async function writeClipboardText(text) {
     }
   }
 }
-
-function extractCopyText(root) {
-  if (!root) return "";
-
-  const clone = root.cloneNode(true);
-
-  clone.querySelectorAll("[data-copy-ignore]").forEach((element) => element.remove());
-
-  clone.querySelectorAll("[data-copy-code]").forEach((element) => {
-    const code = element.getAttribute("data-copy-code") || "";
-    element.replaceWith(document.createTextNode(`\n${code}\n`));
-  });
-
-  clone.querySelectorAll("table").forEach((table) => {
-    const rows = [...table.querySelectorAll("tr")].map((row) =>
-      [...row.children]
-        .map((cell) => cell.innerText.trim().replace(/\s+/g, " "))
-        .join("\t")
-    );
-
-    table.replaceWith(document.createTextNode(`\n${rows.join("\n")}\n`));
-  });
-
-  clone.querySelectorAll("ul").forEach((list) => {
-    [...list.children].forEach((item) => {
-      if (item.tagName === "LI") {
-        item.insertBefore(document.createTextNode("• "), item.firstChild);
-      }
-    });
-  });
-
-  clone.querySelectorAll("ol").forEach((list) => {
-    [...list.children].forEach((item, index) => {
-      if (item.tagName === "LI") {
-        item.insertBefore(document.createTextNode(`${index + 1}. `), item.firstChild);
-      }
-    });
-  });
-
-  clone.querySelectorAll("blockquote").forEach((quote) => {
-    const lines = quote.innerText
-      .split("\n")
-      .map((line) => line.trim())
-      .filter(Boolean);
-
-    quote.textContent = lines.map((line) => `> ${line}`).join("\n");
-  });
-
-  const text = clone.innerText
-    .replace(/\u00a0/g, " ")
-    .replace(/[ \t]+\n/g, "\n")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
-
-  return text;
-}
-
 
 const MARKDOWN_COMPONENTS = {
   code({ className, children, ...props }) {
@@ -422,7 +371,7 @@ function MessageEditor({ initialValue, onSubmit, onCancel }) {
         onKeyDown={handleKeyDown}
         rows={2}
         aria-label={t("msg.edit")}
-        className="w-full resize-none bg-transparent text-[15px] leading-relaxed outline-none text-black dark:text-white"
+        className="w-full resize-none bg-transparent text-[15px] leading-relaxed outline-hidden text-black dark:text-white"
       />
       <div className="mt-2 flex items-center justify-end gap-2">
         <button
@@ -436,7 +385,7 @@ function MessageEditor({ initialValue, onSubmit, onCancel }) {
           type="button"
           onClick={submit}
           disabled={!trimmed}
-          className="px-3 py-1.5 rounded-xl text-[13px] font-medium text-white bg-gradient-to-br from-brand-500 to-brand-600 shadow-glow disabled:opacity-40 disabled:cursor-not-allowed transition-opacity"
+          className="px-3 py-1.5 rounded-xl text-[13px] font-medium text-white bg-linear-to-br from-brand-500 to-brand-600 shadow-glow disabled:opacity-40 disabled:cursor-not-allowed transition-opacity"
         >
           {t("msg.editSave")}
         </button>
@@ -453,7 +402,7 @@ export default function MessageBubble({ message, isLast, onRegenerate, onFeedbac
   const { user } = useAuth();
   const { t } = useI18n();
   const isUser = message.role === "user";
-  const images = getImages(message);
+  const images = useMessageImages(message);
   // Chỉ sửa được khi tin nhắn đã được lưu ở máy chủ (id thật) và không có luồng nào đang chạy.
   const canEdit = isUser && Boolean(onEdit) && !isStreaming && !String(message._id).startsWith("tmp-");
 
@@ -548,9 +497,6 @@ export default function MessageBubble({ message, isLast, onRegenerate, onFeedbac
                   canRetry={isLast && !isStreaming && Boolean(onRetry)}
                   onRetry={() => onRetry(message)}
                 />
-              )}
-              {message.interrupted && !message.error && (
-                <p className="mt-2 text-xs opacity-60">{t("msg.interrupted")}</p>
               )}
             </>
           )}

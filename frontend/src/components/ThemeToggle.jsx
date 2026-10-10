@@ -45,8 +45,8 @@ export default function ThemeToggle({ className = "", size = "md", variant = "co
         "bg-white/80 dark:bg-zinc-900/80 backdrop-blur-md",
         "text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100",
         "hover:border-zinc-300 dark:hover:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800/60",
-        "shadow-sm transition-[background-color,color,border-color,box-shadow,transform] duration-150",
-        "outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 active:scale-95",
+        "shadow-xs transition-[background-color,color,border-color,box-shadow,transform] duration-150",
+        "outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500/40 active:scale-95",
         className
       )}
     >

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, useRef } from "react";
 import { MessagesSquare, Trash2, ChevronLeft, ChevronRight, Pin } from "lucide-react";
 import api from "../../api/axios.js";
 import { TableRowSkeleton, CardRowSkeleton } from "../../components/Skeleton.jsx";
@@ -16,26 +16,33 @@ export default function AdminConversations() {
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
+  const [refresh, setRefresh] = useState(0);
+  const loadVersionRef = useRef(0);
   const toast = useToast();
   const confirm = useConfirm();
   const { t, lang, errorMessage } = useI18n();
 
   const load = useCallback(async () => {
+    const version = ++loadVersionRef.current;
     setLoading(true);
     try {
       const res = await api.get("/admin/conversations", { params: { page, limit: PAGE_SIZE } });
+      if (version !== loadVersionRef.current) return;
+      const lastPage = Math.max(1, Math.ceil(res.data.data.total / PAGE_SIZE));
+      setPage((current) => Math.min(current, lastPage));
       setConversations(res.data.data.conversations);
       setTotal(res.data.data.total);
     } catch (err) {
-      toast.error(errorMessage(err, "chat.err.loadConversations"));
+      if (version === loadVersionRef.current) toast.error(errorMessage(err, "chat.err.loadConversations"));
     } finally {
-      setLoading(false);
+      if (version === loadVersionRef.current) setLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page]);
+  }, [page, refresh]);
 
   useEffect(() => {
     load();
+    return () => { loadVersionRef.current += 1; };
   }, [load]);
 
   const remove = async (conv) => {
@@ -48,8 +55,7 @@ export default function AdminConversations() {
     if (!ok) return;
     try {
       await api.delete(`/admin/conversations/${conv._id}`);
-      setConversations((prev) => prev.filter((c) => c._id !== conv._id));
-      setTotal((n) => Math.max(0, n - 1));
+      setRefresh((value) => value + 1);
       toast.success(t("chat.deleted"));
     } catch (err) {
       toast.error(errorMessage(err, "chat.err.delete"));

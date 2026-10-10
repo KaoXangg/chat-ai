@@ -5,14 +5,20 @@ const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(() => {
-    const raw = localStorage.getItem("chatai_user");
-    return raw ? JSON.parse(raw) : null;
+    try {
+      const raw = localStorage.getItem("chatai_user");
+      const value = raw ? JSON.parse(raw) : null;
+      return value && typeof value === "object" && typeof value.id === "string" ? value : null;
+    } catch {
+      return null;
+    }
   });
   const [loading, setLoading] = useState(true);
 
   const fetchMe = useCallback(async () => {
     const token = localStorage.getItem("chatai_token");
     if (!token) {
+      setUser(null);
       setLoading(false);
       return;
     }
@@ -20,10 +26,13 @@ export function AuthProvider({ children }) {
       const res = await api.get("/auth/me");
       setUser(res.data.data.user);
       localStorage.setItem("chatai_user", JSON.stringify(res.data.data.user));
-    } catch {
-      localStorage.removeItem("chatai_token");
-      localStorage.removeItem("chatai_user");
-      setUser(null);
+    } catch (err) {
+      // A temporary API/network failure must not destroy a valid cached session.
+      if (err.response?.status === 401 || err.response?.data?.error?.code === "USER_BANNED") {
+        localStorage.removeItem("chatai_token");
+        localStorage.removeItem("chatai_user");
+        setUser(null);
+      }
     } finally {
       setLoading(false);
     }

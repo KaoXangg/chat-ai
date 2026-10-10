@@ -2,7 +2,41 @@ node_modules/
 dist/
 .env
 .env.local
+.env.*
+!.env.example
+frontend/playwright-report/
+frontend/test-results/
 *.log
 .DS_Store
 backend.zip
 frontend.zip
+
+# Local editor, agent and operating system files
+.vscode/
+.idea/
+*.code-workspace
+.agents/
+.codex/
+.aws/
+Thumbs.db
+Desktop.ini
+*.swp
+*.swo
+*~
+
+# Generated state, reports, caches and local database backups
+.seeded
+coverage/
+.nyc_output/
+.cache/
+.vite/
+*.tsbuildinfo
+*.pid
+*.pid.lock
+*.bak
+*.mdf
+*.ndf
+*.ldf
+
+# Private local assets; keep reusable source and scripts outside this directory
+local-only/

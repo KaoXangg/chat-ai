@@ -11,7 +11,7 @@ const providers = {
 
 const TITLE_CHAIN = ["gemini", "groq", "openrouter"];
 
-// Chỉ dùng khi bảng AIModels trống (chưa seed), để hệ thống vẫn chạy được.
+// Compatibility for callers that omit the catalog; an explicit empty catalog stays empty.
 const LEGACY_ORDER = ["groq", "gemini", "openrouter"];
 const LEGACY_MODELS = {
   groq: "openai/gpt-oss-20b",
@@ -19,7 +19,7 @@ const LEGACY_MODELS = {
   openrouter: "openrouter/free",
 };
 
-// Chỉ dùng cho catalog dự phòng (bảng AIModels trống). Khi có catalog thật, khả năng xử lý ảnh
+// Chỉ dùng khi caller không truyền catalog. Khi có catalog thật, khả năng xử lý ảnh
 // được quyết định bởi capability "vision" của từng model (Gemini, Groq và OpenRouter adapter đều gửi được ảnh).
 const LEGACY_VISION_PROVIDERS = new Set(["gemini"]);
 
@@ -71,8 +71,9 @@ const byPriority = (a, b) => (a.priority ?? 0) - (b.priority ?? 0);
  * excludedModels = Set các khóa `${provider}/${modelId}` mà người dùng đã hết hạn mức token hôm nay.
  * Khi needsVision = true, chỉ các model có capability "vision" được xét.
  */
-export function buildAttempts({ preferredProvider, preferredModel, catalog = [], needsVision = false, excludedModels = new Set() }) {
-  const source = catalog.length ? catalog : legacyCatalog();
+export function buildAttempts({ preferredProvider, preferredModel, catalog, needsVision = false, excludedModels = new Set() }) {
+  // An explicitly empty catalog means the administrator has disabled every model.
+  const source = catalog ?? legacyCatalog();
   const bestPriority = (name) => {
     const list = source.filter((m) => m.provider === name);
     return list.length ? Math.min(...list.map((m) => m.priority ?? 0)) : Infinity;
@@ -129,10 +130,9 @@ export function buildAttempts({ preferredProvider, preferredModel, catalog = [],
  *  - { token, provider, model }  : một đoạn văn bản
  *  - { usage, provider, model }  : số token của lượt trả lời (phát đúng 1 lần ở cuối; `estimated: true` nếu tự ước lượng)
  */
-export async function* streamWithFallback(messages, preferredProvider = "groq", model, { catalog = [], excludedModels = new Set(), signal } = {}) {
+export async function* streamWithFallback(messages, preferredProvider = "groq", model, { catalog, excludedModels = new Set(), signal } = {}) {
   signal?.throwIfAborted();
-  const lastMessage = messages[messages.length - 1];
-  const needsVision = Boolean(lastMessage?.images?.length || lastMessage?.image);
+  const needsVision = messages.some((message) => message.images?.length || message.image);
 
   const { attempts, skipped, quotaBlocked } = buildAttempts({ preferredProvider, preferredModel: model, catalog, needsVision, excludedModels });
   const errors = [...skipped];
