@@ -49,7 +49,7 @@ for (const file of localeFiles) {
     if (!valueMatch) continue;
     const value = valueMatch[2];
     values.set(key, { value, file, line: index + 1 });
-    if (!value.includes("http") && !value.includes("${") && !/\?[^\s"'`=]+=?/.test(value) && /\?\w|\?{2,}/u.test(value)) {
+    if (!value.includes("http") && !value.includes("${") && !/\?[^\s"'`=]+=/.test(value) && /\?\w|\?{2,}/u.test(value)) {
       add(file, index + 1, key, "suspicious question mark in translation string");
     }
   }
