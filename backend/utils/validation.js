@@ -6,6 +6,10 @@ export function isSqlId(value) {
   return /^\d+$/.test(String(value)) && Number.isSafeInteger(Number(value)) && Number(value) > 0 && Number(value) <= 2147483647;
 }
 
+export function escapeLike(value) {
+  return String(value).replaceAll("[", "[[]").replaceAll("%", "[%]").replaceAll("_", "[_]");
+}
+
 export function validateIdParam(req, res, next, value) {
   if (!isSqlId(value)) return next(invalidInput("Mã định danh không hợp lệ."));
   next();

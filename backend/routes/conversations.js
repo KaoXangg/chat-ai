@@ -5,7 +5,7 @@ import Message from "../models/Message.js";
 import { authMiddleware } from "../middleware/auth.js";
 import { serializeConversationMutation } from "../utils/chatLock.js";
 import { sequelize } from "../config/db.js";
-import { invalidInput, validateIdParam } from "../utils/validation.js";
+import { escapeLike, invalidInput, validateIdParam } from "../utils/validation.js";
 
 const router = express.Router();
 router.use(authMiddleware);
@@ -25,7 +25,7 @@ router.get("/", async (req, res, next) => {
     const { search } = req.query;
     if (search !== undefined && (typeof search !== "string" || search.length > 120)) throw invalidInput("Từ khóa tìm kiếm không hợp lệ.");
     const where = { userId: req.user.id };
-    if (search) where.title = { [Op.like]: `%${search}%` };
+    if (search) where.title = { [Op.like]: `%${escapeLike(search)}%` };
 
     const conversations = await Conversation.findAll({
       where,

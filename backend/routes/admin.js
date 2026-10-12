@@ -11,7 +11,7 @@ import { getConfiguredProviders } from "../providers/aiRouter.js";
 import { parsePagination } from "../utils/pagination.js";
 import { serializeConversationMutation, serializeDatabaseMutation, userChatLock } from "../utils/chatLock.js";
 import { sanitizeModelPayload } from "../utils/modelPayload.js";
-import { invalidInput, validateIdParam } from "../utils/validation.js";
+import { escapeLike, invalidInput, validateIdParam } from "../utils/validation.js";
 
 const router = express.Router();
 router.use(authMiddleware, requireAdmin);
@@ -74,7 +74,7 @@ router.get("/users", async (req, res, next) => {
     const { page, limit, offset } = parsePagination(req.query);
     const where = {};
     if (search) {
-      where[Op.or] = [{ username: { [Op.like]: `%${search}%` } }, { email: { [Op.like]: `%${search}%` } }];
+      where[Op.or] = [{ username: { [Op.like]: `%${escapeLike(search)}%` } }, { email: { [Op.like]: `%${escapeLike(search)}%` } }];
     }
     if (role && ["user", "admin"].includes(role)) where.role = role;
     if (status && ["active", "banned"].includes(status)) where.status = status;

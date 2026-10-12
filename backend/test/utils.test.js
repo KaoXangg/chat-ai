@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { createRequire } from "node:module";
 import { parsePagination } from "../utils/pagination.js";
+import { escapeLike } from "../utils/validation.js";
 const { sprintf, vsprintf } = createRequire(import.meta.url)("sprintf-js");
 
 test("pagination accepts bounded integers and rejects dangerous offsets", () => {
@@ -9,6 +10,15 @@ test("pagination accepts bounded integers and rejects dangerous offsets", () => 
   for (const query of [{ page: "-1" }, { page: "1.5" }, { limit: "0" }, { limit: "101" }, { page: "1e50" }, { page: "999999999", limit: "100" }, { page: ["1", "2"] }]) {
     assert.throws(() => parsePagination(query), { status: 400 });
   }
+});
+
+test("escapeLike treats T-SQL LIKE metacharacters literally", () => {
+  assert.equal(escapeLike(""), "");
+  assert.equal(escapeLike("%"), "[%]");
+  assert.equal(escapeLike("_"), "[_]");
+  assert.equal(escapeLike("[abc]"), "[[]abc]");
+  assert.equal(escapeLike("50%_off"), "50[%][_]off");
+  assert.equal(escapeLike("[%_]"), "[[][%][_]]");
 });
 
 test("patched sprintf retains SQL driver formatting and named/positional arguments", () => {
