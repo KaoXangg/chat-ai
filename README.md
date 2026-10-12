@@ -207,6 +207,8 @@ Kiểm tra giá trị API base URL trong `frontend/.env` theo `frontend/.env.exa
 | `backend` | `npm test` | Kiểm thử API, xác thực và các tình huống lỗi chat bằng dữ liệu giả |
 | `frontend` | `npm test` | Build production và kiểm thử trình duyệt bằng Playwright |
 
+Kiểm tra tính toàn vẹn và tính nhất quán của bản dịch bằng `cd frontend && npm run check:locales`.
+
 Kiểm thử trình duyệt dùng Chrome/Edge đã cài trên Windows, hoặc Chromium của Playwright (`npx playwright install chromium`). Có thể chỉ định trình duyệt qua `PLAYWRIGHT_CHROME_EXECUTABLE`. Các kiểm thử dùng API giả, không gọi nhà cung cấp AI hoặc sửa database thật.
 
 ## Biến môi trường

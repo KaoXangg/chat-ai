@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
+    "check:locales": "node scripts/check-locales.mjs",
     "test": "npm run build && playwright test",
     "test:browser": "playwright test"
   },
