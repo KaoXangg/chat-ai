@@ -12,6 +12,7 @@ import { sendOtpEmail, isMailerConfigured } from "../utils/mailer.js";
 import { generateRandomAvatar, isValidAvatarUrl } from "../utils/avatar.js";
 
 const router = express.Router();
+const DUMMY_HASH = bcrypt.hashSync("không-dùng", 10);
 
 function publicUser(user) {
   return {
@@ -84,10 +85,15 @@ router.post("/login", authLimiter, async (req, res, next) => {
 
     const user = await User.findOne({ where: { email: email.toLowerCase().trim() } });
     if (!user) {
+      await bcrypt.compare(password, DUMMY_HASH);
       return res.status(401).json({ success: false, error: { code: "INVALID_CREDENTIALS", message: "Email hoặc mật khẩu không đúng." } });
     }
 
     if (user.status === "banned") {
+      const match = await bcrypt.compare(password, user.passwordHash);
+      if (!match) {
+        return res.status(401).json({ success: false, error: { code: "INVALID_CREDENTIALS", message: "Email hoặc mật khẩu không đúng." } });
+      }
       return res.status(403).json({ success: false, error: { code: "USER_BANNED", message: "Tài khoản đã bị khóa." } });
     }
 

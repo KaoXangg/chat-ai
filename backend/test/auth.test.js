@@ -73,6 +73,29 @@ test("password reset revokes existing sessions and a new login works", async () 
   assert.equal((await privateRequest((await login.json()).data.token)).status, 200);
 });
 
+test("unknown emails and incorrect passwords return identical login errors", async () => {
+  mock.method(User, "findOne", async ({ where }) => where.email === user.email ? user : null);
+  const unknown = await post("login", { email: "missing@example.test", password: "incorrect-password" });
+  const incorrect = await post("login", { email: user.email, password: "incorrect-password" });
+  assert.equal(unknown.status, 401);
+  assert.equal(incorrect.status, 401);
+  assert.deepEqual((await unknown.json()).error, (await incorrect.json()).error);
+});
+
+test("a banned account with an incorrect password returns generic credentials error", async () => {
+  user.status = "banned";
+  const response = await post("login", { email: user.email, password: "incorrect-password" });
+  assert.equal(response.status, 401);
+  assert.equal((await response.json()).error.code, "INVALID_CREDENTIALS");
+});
+
+test("a banned account with a correct password returns USER_BANNED", async () => {
+  user.status = "banned";
+  const response = await post("login", { email: user.email, password: oldPassword });
+  assert.equal(response.status, 403);
+  assert.equal((await response.json()).error.code, "USER_BANNED");
+});
+
 test("password change revokes existing sessions only after a correct password", async () => {
   const token = generateToken(user);
   const wrong = await post("change-password", { currentPassword: "incorrect", newPassword: "replacement-password" }, token);
