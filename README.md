@@ -2,12 +2,12 @@
 
 Ứng dụng web trò chuyện với AI đa mô hình, lấy cảm hứng từ trải nghiệm ChatGPT: phản hồi streaming theo thời gian thực, quản lý lịch sử hội thoại, hỗ trợ nhiều nhà cung cấp AI (Groq, Google Gemini, OpenRouter) và có trang quản trị để quản lý người dùng, mô hình AI.
 
-![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=black)
-![Vite](https://img.shields.io/badge/Vite-5-646CFF?logo=vite&logoColor=white)
-![Node.js](https://img.shields.io/badge/Node.js-18+-339933?logo=node.js&logoColor=white)
+![React](https://img.shields.io/badge/React-18.3.1-61DAFB?logo=react&logoColor=black)
+![Vite](https://img.shields.io/badge/Vite-7.3.7-646CFF?logo=vite&logoColor=white)
+![Node.js](https://img.shields.io/badge/Node.js-22.12%2B%20%7C%2024%2B-339933?logo=node.js&logoColor=white)
 ![Express](https://img.shields.io/badge/Express-4-000000?logo=express&logoColor=white)
 ![SQL Server](https://img.shields.io/badge/SQL%20Server-CC2927?logo=microsoftsqlserver&logoColor=white)
-![Tailwind CSS](https://img.shields.io/badge/Tailwind%20CSS-06B6D4?logo=tailwindcss&logoColor=white)
+![Tailwind CSS](https://img.shields.io/badge/Tailwind%20CSS-4.3.3-06B6D4?logo=tailwindcss&logoColor=white)
 
 > Dự án phục vụ học tập và phát triển. Các tính năng khi chạy thực tế phụ thuộc vào cấu hình database, API key và môi trường triển khai.
 
