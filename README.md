@@ -349,6 +349,8 @@ Base URL: `http://localhost:5000/api`. Các nhóm route nằm trong `backend/rou
 | Method | Endpoint | Mô tả |
 |---|---|---|
 | GET | `/health` | Kiểm tra trạng thái API |
+| PATCH | `/auth/me` | Cập nhật hồ sơ; chưa có giao diện |
+| POST | `/auth/change-password` | Đổi mật khẩu; chưa có giao diện |
 
 > Chi tiết từng endpoint (đường dẫn, tham số) xem trong các file tại `backend/routes/`.
 
