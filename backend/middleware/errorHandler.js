@@ -4,7 +4,10 @@ export function notFoundHandler(req, res) {
 
 export function errorHandler(err, req, res, next) {
   if (res.headersSent) return next(err);
-  if (err.type === "entity.parse.failed" || err.type === "entity.too.large") {
+  if (err.type === "entity.too.large") {
+    return res.status(413).json({ success: false, error: { code: "PAYLOAD_TOO_LARGE", message: "Nội dung yêu cầu quá lớn." } });
+  }
+  if (err.type === "entity.parse.failed") {
     return res.status(err.status).json({ success: false, error: { code: "INVALID_INPUT", message: err.type === "entity.too.large" ? "Nội dung yêu cầu quá lớn." : "JSON không hợp lệ." } });
   }
   if (["SequelizeValidationError", "SequelizeUniqueConstraintError"].includes(err.name)) {
