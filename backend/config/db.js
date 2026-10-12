@@ -29,7 +29,12 @@ export const chatLockDatabase = new Sequelize(
   {
     ...sequelize.options,
     logging: false,
-    pool: { max: 20, min: 0, acquire: 5000, idle: 10000 },
+    pool: {
+      max: Number(process.env.CHAT_LOCK_POOL_MAX) || 20,
+      min: 0,
+      acquire: Number(process.env.CHAT_LOCK_ACQUIRE_MS) || 5000,
+      idle: 10000,
+    },
   }
 );
 

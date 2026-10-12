@@ -292,6 +292,21 @@ test("real Sequelize validation and uniqueness errors return 400 without logging
   assert.equal(log.mock.calls.length, 0);
 });
 
+test("connection acquire timeouts return retryable SERVER_BUSY", () => {
+  let status, body;
+  const headers = {};
+  const response = {
+    headersSent: false,
+    set(name, value) { headers[name] = value; return this; },
+    status(code) { status = code; return this; },
+    json(value) { body = value; return this; },
+  };
+  errorHandler(Object.assign(new Error("Synthetic pool timeout"), { name: "SequelizeConnectionAcquireTimeoutError" }), {}, response, () => {});
+  assert.equal(status, 503);
+  assert.equal(body.error.code, "SERVER_BUSY");
+  assert.equal(headers["Retry-After"], "3");
+});
+
 test("message list returns image URLs and separate image endpoint returns bytes", async () => {
   rows[0].images = [{ mimeType: "image/png", data: Buffer.from("first-image").toString("base64") }, { mimeType: "image/jpeg", data: Buffer.from("second-image").toString("base64") }];
   rows[0].imageBase64 = rows[0].images[0].data;

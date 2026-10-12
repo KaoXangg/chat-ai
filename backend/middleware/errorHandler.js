@@ -10,6 +10,10 @@ export function errorHandler(err, req, res, next) {
   if (err.type === "entity.parse.failed") {
     return res.status(err.status).json({ success: false, error: { code: "INVALID_INPUT", message: err.type === "entity.too.large" ? "Nội dung yêu cầu quá lớn." : "JSON không hợp lệ." } });
   }
+  if (err.name === "SequelizeConnectionAcquireTimeoutError") {
+    res.set("Retry-After", "3");
+    return res.status(503).json({ success: false, error: { code: "SERVER_BUSY", message: "Máy chủ đang bận. Vui lòng thử lại sau ít giây." } });
+  }
   if (["SequelizeValidationError", "SequelizeUniqueConstraintError"].includes(err.name)) {
     return res.status(400).json({
       success: false,

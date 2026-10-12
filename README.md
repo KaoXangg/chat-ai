@@ -296,7 +296,7 @@ Quan hệ chính: `User` 1–N `Conversation`; `Conversation` 1–N `Message`.
 
 Phần cuối script đặt hạn mức mỗi người dùng / model / ngày cho các model đang có `dailyTokenLimit = 0`: Gemini **100.000**, Groq **50.000**, OpenRouter **30.000**, provider khác **50.000** token. Hạn mức khác `0` được giữ nguyên. Vì `0` trong ứng dụng có nghĩa là không giới hạn, nếu muốn dùng không giới hạn hãy đặt lại `0` trong Admin sau khi chạy script. Script không tạo tài khoản admin hoặc danh sách model; với DB mới, chạy `npm run seed` rồi chạy lại script để áp dụng hạn mức cho model vừa tạo.
 
-Gửi lại cùng `requestId` không tạo thêm câu hỏi hoặc tính lại token cho câu trả lời đã hoàn tất. Khóa ứng dụng SQL Server (`sp_getapplock`) tuần tự hóa chat theo người dùng và hội thoại, kể cả khi chạy nhiều backend; yêu cầu trùng lúc nhận `409 CHAT_BUSY`. Pool giữ khóa được tách khỏi pool truy vấn để các luồng streaming không chặn việc lưu dữ liệu.
+Gửi lại cùng `requestId` không tạo thêm câu hỏi hoặc tính lại token cho câu trả lời đã hoàn tất. Khóa ứng dụng SQL Server (`sp_getapplock`) tuần tự hóa chat theo người dùng và hội thoại, kể cả khi chạy nhiều backend; yêu cầu trùng lúc nhận `409 CHAT_BUSY`. Pool giữ khóa được tách khỏi pool truy vấn để các luồng streaming không chặn việc lưu dữ liệu. Mỗi lượt chat đang stream giữ 1 kết nối khóa; số luồng song song tối đa ≈ `CHAT_LOCK_POOL_MAX`.
 
 ## Tài khoản quản trị
 
