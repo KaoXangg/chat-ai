@@ -53,3 +53,18 @@ test("small login bodies reach the login route", async () => {
   assert.equal(response.status, 401);
   assert.equal((await response.json()).error.code, "INVALID_CREDENTIALS");
 });
+
+test("TRUST_PROXY defaults off and accepts a positive hop count", () => {
+  const previous = process.env.TRUST_PROXY;
+  try {
+    delete process.env.TRUST_PROXY;
+    assert.equal(createApp().get("trust proxy"), false);
+    process.env.TRUST_PROXY = "2";
+    assert.equal(createApp().get("trust proxy"), 2);
+    process.env.TRUST_PROXY = "invalid";
+    assert.equal(createApp().get("trust proxy"), false);
+  } finally {
+    if (previous === undefined) delete process.env.TRUST_PROXY;
+    else process.env.TRUST_PROXY = previous;
+  }
+});

@@ -14,6 +14,8 @@ import preferencesRoutes from "./routes/preferences.js";
 export function createApp() {
   const app = express();
 
+  const proxyHops = process.env.TRUST_PROXY;
+  app.set("trust proxy", /^\d+$/.test(proxyHops || "") && Number(proxyHops) > 0 ? Number(proxyHops) : false);
   app.use(cors({ origin: process.env.CLIENT_URL || "http://localhost:5173", credentials: true }));
   app.use("/api/chat", express.json({ limit: process.env.JSON_BODY_LIMIT_CHAT || "40mb" }));
   app.use(express.json({ limit: process.env.JSON_BODY_LIMIT || "100kb" }));

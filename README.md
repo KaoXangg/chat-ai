@@ -253,6 +253,7 @@ CHAT_RATE_LIMIT_PER_MINUTE=10
 |---|:---:|---|
 | `PORT` | | Cổng backend (mặc định 5000) |
 | `CLIENT_URL` | ✅ | Origin của frontend, dùng cho CORS |
+| `TRUST_PROXY` | | Số hop reverse proxy đáng tin; mặc định `0` (tắt). Bật khi backend đứng sau reverse proxy để rate limit dùng IP thật. |
 | `DB_LOG_SQL`, `HTTP_LOG_REQUESTS` | | Đặt `true` để bật log SQL hoặc HTTP; mặc định tắt |
 | `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD` | ✅ | Thông tin kết nối SQL Server |
 | `DB_ENCRYPT`, `DB_TRUST_SERVER_CERT` | | Tùy chọn mã hóa kết nối; môi trường local thường dùng `false` / `true` |
@@ -321,6 +322,18 @@ Tài khoản admin được tạo theo cấu hình trong `backend/.env` và logi
 - **Rate limit** cho yêu cầu chat, cấu hình qua `CHAT_RATE_LIMIT_PER_MINUTE`.
 - CORS giới hạn theo `CLIENT_URL`.
 - API key của AI provider chỉ nằm ở backend.
+
+### Bảo mật khi triển khai
+
+JWT hiện được lưu trong `localStorage`. Cách này được chấp nhận trong dự án nhưng mã JavaScript chạy trên trang có thể đọc token nếu xảy ra XSS. Hãy cấu hình Content-Security-Policy (CSP) tại nơi host frontend để giảm bề mặt tấn công.
+
+Điểm khởi đầu cho CSP; `connect-src` cần trỏ tới origin API khi frontend và backend khác origin. Frontend hiện tải avatar ngoài từ `https://api.dicebear.com`:
+
+```text
+default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://api.dicebear.com; connect-src 'self' <origin API>; frame-ancestors 'none'
+```
+
+Không đóng gói `backend/.env`, `frontend/.env` hoặc `node_modules` khi gửi hay nén dự án.
 
 `sprintf-js`, phụ thuộc gián tiếp của driver SQL Server, dùng bản vá cục bộ có giới hạn tài nguyên. Nguồn, giấy phép và hướng dẫn thay thế khi upstream phát hành bản vá nằm tại [backend/vendor/sprintf-js/README.md](backend/vendor/sprintf-js/README.md).
 
