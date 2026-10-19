@@ -14,6 +14,7 @@ export default {
   "admin.dash.chartCount": "{n} tin nhắn",
   "admin.nav.dashboard": "Tổng quan",
   "admin.nav.users": "Người dùng",
+  "admin.nav.sessions": "Thiết bị & Phiên",
   "admin.nav.models": "Mô hình AI",
   "admin.nav.conversations": "Cuộc trò chuyện",
   "admin.nav.fallbackTitle": "Quản trị",

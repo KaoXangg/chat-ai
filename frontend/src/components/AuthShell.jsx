@@ -5,9 +5,11 @@ import clsx from "clsx";
 import BrandMark from "./BrandMark.jsx";
 import LanguageSwitcher from "./LanguageSwitcher.jsx";
 import ThemeToggle from "./ThemeToggle.jsx";
+import AuthHeroShowcase from "./AuthHeroShowcase.jsx";
 import { EASE, getTransitionKind, pageVariants } from "./AuthMotion.jsx";
 import { AuthDraftProvider } from "../context/AuthDraftContext.jsx";
 import { useI18n } from "../i18n/I18nContext.jsx";
+
 
 const TABS = [
   { to: "/login", key: "auth.layout.tabLogin" },
@@ -119,44 +121,38 @@ export default function AuthShell() {
 
   return (
     <AuthDraftProvider>
-      <div className="min-h-screen min-h-[100dvh] w-full flex flex-col justify-between bg-[#fbfbfc] dark:bg-[#0c0d12] text-zinc-900 dark:text-zinc-100 relative transition-colors duration-200">
-        {/* Nền tinh tế: ambient radial glow mờ ảo thanh nhã, không gradient tím đậm */}
-        <div className="absolute inset-0 pointer-events-none overflow-hidden" aria-hidden="true">
-          <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[280px] bg-brand-500/[0.035] dark:bg-brand-500/[0.05] rounded-full blur-[90px]" />
-          <div
-            className="absolute inset-0 opacity-[0.02] dark:opacity-[0.03]"
-            style={{
-              backgroundImage: "radial-gradient(currentColor 1px, transparent 1px)",
-              backgroundSize: "24px 24px",
-            }}
-          />
-        </div>
-
-        {/* Thanh tiêu đề trên cùng: Brand logo góc trái, cụm Language Switcher & Theme Switcher góc phải */}
-        <header className="relative z-30 w-full px-4 py-2.5 sm:px-8 sm:py-3 flex items-center justify-between max-w-6xl mx-auto shrink-0">
-          <Link
-            to="/login"
-            className="group flex items-center gap-2.5 outline-hidden rounded-lg focus-visible:ring-2 focus-visible:ring-brand-500/40"
-            aria-label="Chat AI Home"
-          >
-            <BrandMark size={28} className="transition-transform duration-200 group-hover:scale-105" />
-            <span className="font-display font-bold text-sm sm:text-base tracking-tight text-zinc-900 dark:text-white">
-              Chat AI
-            </span>
-          </Link>
-
-          <div className="flex items-center gap-2">
-            <ThemeToggle />
-            <LanguageSwitcher mode="ui" align="end" />
+      <div className="min-h-screen min-h-[100dvh] w-full flex items-center justify-center bg-[#eef2f6] dark:bg-[#0a0b10] text-zinc-900 dark:text-zinc-100 p-3 sm:p-5 md:p-8 transition-colors duration-200 relative select-none">
+        {/* Main Floating Rounded Card Container */}
+        <div className="w-full max-w-[1040px] min-h-[660px] lg:min-h-[700px] bg-white dark:bg-[#12131b] rounded-[32px] shadow-[0_20px_50px_-12px_rgba(0,0,0,0.07)] dark:shadow-[0_25px_60px_-15px_rgba(0,0,0,0.6)] border border-zinc-200/90 dark:border-white/[0.08] overflow-hidden grid grid-cols-1 lg:grid-cols-2 relative">
+          
+          {/* LEFT PANEL: 3D Isometric Artwork (Matching Chat AI Brand) */}
+          <div className="hidden lg:flex p-3 xl:p-3.5 z-10">
+            <AuthHeroShowcase />
           </div>
-        </header>
 
-        {/* Khung nội dung chính: Bố cục trung tâm tinh gọn, tự động co giãn theo viewport thực tế */}
-        <main className="flex-1 flex flex-col items-center justify-center px-4 py-2.5 sm:py-4 md:py-5 w-full relative z-10">
-          <div className="w-full max-w-[416px] mx-auto my-auto">
-            <div className="rounded-2xl border border-zinc-200/90 dark:border-white/[0.08] bg-white dark:bg-[#13141b] shadow-[0_2px_8px_-2px_rgba(0,0,0,0.04),0_12px_28px_-6px_rgba(0,0,0,0.06)] dark:shadow-[0_4px_24px_-4px_rgba(0,0,0,0.5)] px-6 py-5 sm:px-7 sm:py-6 transition-[background-color,border-color] duration-200">
-              <AuthTabs />
+          {/* RIGHT PANEL: Branding & Form Content */}
+          <div className="flex flex-col justify-between p-6 sm:p-8 md:p-10 lg:p-11 z-10 w-full overflow-y-auto">
+            {/* Top Bar: Brand Logo & Controls */}
+            <div className="flex items-center justify-between w-full mb-6 sm:mb-8">
+              <Link
+                to="/login"
+                className="group flex items-center gap-2.5 outline-hidden rounded-lg focus-visible:ring-2 focus-visible:ring-brand-500/40"
+                aria-label="Chat AI Home"
+              >
+                <BrandMark size={30} className="transition-transform duration-200 group-hover:scale-105" />
+                <span className="font-display font-bold text-base sm:text-lg tracking-tight text-zinc-900 dark:text-white">
+                  Chat AI
+                </span>
+              </Link>
 
+              <div className="flex items-center gap-2">
+                <ThemeToggle />
+                <LanguageSwitcher mode="ui" align="end" />
+              </div>
+            </div>
+
+            {/* Middle Form Area */}
+            <div className="w-full max-w-[380px] mx-auto my-auto py-2">
               <AutoHeight>
                 <AnimatePresence mode="wait" custom={kind}>
                   <motion.div
@@ -172,14 +168,17 @@ export default function AuthShell() {
                 </AnimatePresence>
               </AutoHeight>
             </div>
-          </div>
-        </main>
 
-        {/* Chân trang tối giản */}
-        <footer className="relative z-20 py-2 sm:py-2.5 px-4 text-center text-[11px] sm:text-xs text-zinc-400 dark:text-zinc-600 shrink-0">
-          <span>{t("auth.layout.copyright", { year: new Date().getFullYear() })}</span>
-        </footer>
+            {/* Bottom Disclaimer */}
+            <div className="pt-6 sm:pt-8 text-center">
+              <p className="text-[11px] sm:text-xs text-zinc-400 dark:text-zinc-500 leading-relaxed max-w-sm mx-auto">
+                {t("auth.login.bottomDisclaimer")}
+              </p>
+            </div>
+          </div>
+        </div>
       </div>
     </AuthDraftProvider>
   );
 }
+

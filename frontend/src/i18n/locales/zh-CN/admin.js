@@ -154,4 +154,5 @@ export default {
   "admin.form.required": "请同时填写模型 ID 和显示名称。",
   "admin.form.updated": "模型已更新。",
   "admin.form.created": "已添加新模型。",
+  "admin.nav.sessions": "设备与会话",
 };

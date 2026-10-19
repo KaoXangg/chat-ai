@@ -154,4 +154,5 @@ export default {
   "admin.form.required": "モデルIDと表示名の両方を入力してください。",
   "admin.form.updated": "モデルを更新しました。",
   "admin.form.created": "新しいモデルを追加しました。",
+  "admin.nav.sessions": "デバイスとセッション",
 };

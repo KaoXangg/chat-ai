@@ -1,0 +1,61 @@
+{
+  "name": "Chat AI - Trợ lý AI của riêng bạn",
+  "short_name": "Chat AI",
+  "description": "Ứng dụng trợ lý AI thông minh đa mô hình, hỗ trợ trò chuyện, giọng nói, tải tài liệu và phân tích mã nguồn.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#08080f",
+  "theme_color": "#5843e6",
+  "categories": [
+    "productivity",
+    "utilities"
+  ],
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/brand-logo.png",
+      "sizes": "192x192 512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/brand-logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Cuộc trò chuyện mới",
+      "short_name": "Chat mới",
+      "description": "Bắt đầu cuộc trò chuyện AI mới",
+      "url": "/",
+      "icons": [
+        {
+          "src": "/favicon.svg",
+          "sizes": "any"
+        }
+      ]
+    },
+    {
+      "name": "Đăng nhập",
+      "short_name": "Đăng nhập",
+      "description": "Đăng nhập vào tài khoản Chat AI",
+      "url": "/login",
+      "icons": [
+        {
+          "src": "/favicon.svg",
+          "sizes": "any"
+        }
+      ]
+    }
+  ]
+}

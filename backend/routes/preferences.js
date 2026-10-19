@@ -7,23 +7,30 @@ const router = express.Router();
 router.use(authMiddleware);
 
 function toPreferences(user) {
-  return { uiLanguage: user.uiLanguage || null, aiLanguage: user.aiLanguage || AI_LANGUAGE_AUTO };
+  return {
+    uiLanguage: user.uiLanguage || null,
+    aiLanguage: user.aiLanguage || AI_LANGUAGE_AUTO,
+    systemPrompt: user.systemPrompt || "",
+  };
 }
 
 router.get("/", (req, res) => {
   res.json({ success: true, data: toPreferences(req.user) });
 });
 
-/** Cập nhật ngôn ngữ giao diện và/hoặc ngôn ngữ AI trả lời. Chỉ các trường được gửi mới bị thay đổi. */
+/** Cập nhật ngôn ngữ giao diện, ngôn ngữ AI trả lời và chỉ dẫn hệ thống (systemPrompt). */
 router.patch("/", async (req, res, next) => {
   try {
-    const { uiLanguage, aiLanguage } = req.body;
+    const { uiLanguage, aiLanguage, systemPrompt } = req.body;
 
     if (uiLanguage !== undefined && !isValidLanguage(uiLanguage)) {
       return res.status(400).json({ success: false, error: { code: "INVALID_LANGUAGE", message: "Ngôn ngữ giao diện không hợp lệ." } });
     }
     if (aiLanguage !== undefined && !isValidAiLanguage(aiLanguage)) {
       return res.status(400).json({ success: false, error: { code: "INVALID_LANGUAGE", message: "Ngôn ngữ trả lời không hợp lệ." } });
+    }
+    if (systemPrompt !== undefined && typeof systemPrompt !== "string") {
+      return res.status(400).json({ success: false, error: { code: "INVALID_PROMPT", message: "Chỉ dẫn hệ thống không hợp lệ." } });
     }
 
     const full = await User.findByPk(req.user.id);
@@ -32,6 +39,9 @@ router.patch("/", async (req, res, next) => {
     }
     if (uiLanguage !== undefined) full.uiLanguage = uiLanguage;
     if (aiLanguage !== undefined) full.aiLanguage = aiLanguage;
+    if (systemPrompt !== undefined) {
+      full.systemPrompt = systemPrompt ? systemPrompt.trim().slice(0, 2000) : null;
+    }
     await full.save();
 
     res.json({ success: true, data: toPreferences(full) });

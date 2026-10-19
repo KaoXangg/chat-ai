@@ -17,6 +17,13 @@ const Dashboard = lazy(() => import("./pages/admin/Dashboard.jsx"));
 const AdminUsers = lazy(() => import("./pages/admin/Users.jsx"));
 const AdminModels = lazy(() => import("./pages/admin/Models.jsx"));
 const AdminConversations = lazy(() => import("./pages/admin/Conversations.jsx"));
+const AdminSettings = lazy(() => import("./pages/admin/Settings.jsx"));
+const AdminPersonas = lazy(() => import("./pages/admin/Personas.jsx"));
+const AdminAuditLogs = lazy(() => import("./pages/admin/AuditLogs.jsx"));
+const AdminAnnouncements = lazy(() => import("./pages/admin/Announcements.jsx"));
+const AdminSessions = lazy(() => import("./pages/admin/Sessions.jsx"));
+const SharedChat = lazy(() => import("./pages/SharedChat.jsx"));
+const Pricing = lazy(() => import("./pages/Pricing.jsx"));
 
 const AUTH_PATHS = new Set(["/login", "/register", "/forgot-password", "/reset-password"]);
 
@@ -49,7 +56,11 @@ function Lazy({ children, full = false }) {
  */
 export default function App() {
   const location = useLocation();
-  const section = AUTH_PATHS.has(location.pathname) ? "auth" : "app";
+  const section = location.pathname.startsWith("/share")
+    ? "share"
+    : AUTH_PATHS.has(location.pathname)
+    ? "auth"
+    : "app";
 
   return (
     <MotionConfig reducedMotion="user">
@@ -63,6 +74,9 @@ export default function App() {
           transition={{ duration: 0.16, ease: "easeOut" }}
         >
           <Routes location={location}>
+            <Route path="/pricing" element={<Lazy full><Pricing /></Lazy>} />
+            <Route path="/share/:shareId" element={<Lazy full><SharedChat /></Lazy>} />
+
             <Route element={<AuthShell />}>
               <Route path="/login" element={<Login />} />
               <Route path="/register" element={<Register />} />
@@ -90,8 +104,13 @@ export default function App() {
                   }
                 >
                   <Route index element={<Lazy><Dashboard /></Lazy>} />
+                  <Route path="settings" element={<Lazy><AdminSettings /></Lazy>} />
+                  <Route path="announcements" element={<Lazy><AdminAnnouncements /></Lazy>} />
                   <Route path="users" element={<Lazy><AdminUsers /></Lazy>} />
+                  <Route path="sessions" element={<Lazy><AdminSessions /></Lazy>} />
                   <Route path="models" element={<Lazy><AdminModels /></Lazy>} />
+                  <Route path="personas" element={<Lazy><AdminPersonas /></Lazy>} />
+                  <Route path="audit-logs" element={<Lazy><AdminAuditLogs /></Lazy>} />
                   <Route path="conversations" element={<Lazy><AdminConversations /></Lazy>} />
                 </Route>
               </Route>

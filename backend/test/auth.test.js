@@ -8,12 +8,12 @@ import jwt from "jsonwebtoken";
 process.env.JWT_SECRET = "auth-regression-test-secret";
 process.env.DB_NAME = "test";
 process.env.DB_USER = "test";
-const { sequelize, User, PasswordReset } = await import("../models/index.js");
+const { sequelize, User, PasswordReset, Session, SystemSetting } = await import("../models/index.js");
 const authRouter = (await import("../routes/auth.js")).default;
 const { authMiddleware } = await import("../middleware/auth.js");
 const { errorHandler } = await import("../middleware/errorHandler.js");
 const { generateToken } = await import("../utils/generateToken.js");
-let server, base, user, reset, failPasswordWrite;
+let server, base, user, reset, failPasswordWrite, sessions;
 const oldPassword = "original-password";
 const hash = bcrypt.hashSync(oldPassword, 4);
 const post = (path, body, token) => fetch(`${base}/auth/${path}`, {
@@ -39,6 +39,21 @@ beforeEach(() => {
   failPasswordWrite = false;
   mock.method(console, "error", () => {});
   mock.method(sequelize, "query", async () => { throw new Error("Unexpected database query in isolated tests"); });
+  sessions = new Map();
+  mock.method(SystemSetting, "findByPk", async () => ({ toJSON: () => ({ allowRegistration: true, maintenanceMode: false }) }));
+  mock.method(Session, "create", async (values) => {
+    const session = { id: sessions.size + 1, isRevoked: false, lastActiveAt: new Date(), save: async () => {}, ...values };
+    sessions.set(session.sessionToken, session);
+    return session;
+  });
+  mock.method(Session, "findOne", async ({ where }) => sessions.get(where.sessionToken) ?? null);
+  mock.method(Session, "update", async (values, { where }) => {
+    let count = 0;
+    for (const session of sessions.values()) {
+      if (where.userId === undefined || session.userId === where.userId) { Object.assign(session, values); count++; }
+    }
+    return [count];
+  });
   mock.method(User, "findOne", async () => user);
   mock.method(User, "findByPk", async () => user);
   mock.method(User, "update", async ({ passwordHash }) => {
@@ -152,4 +167,27 @@ test("a password change cannot overwrite a concurrent credential change", async 
   assert.equal((await response.json()).error.code, "SESSION_REVOKED");
   assert.equal(user.passwordHash, hash);
   assert.equal(reset.used, false);
+});
+
+test("login sets the refresh token only in an httpOnly cookie, never in the JSON body", async () => {
+  const login = await post("login", { email: user.email, password: oldPassword });
+  assert.equal(login.status, 200);
+  const body = await login.json();
+  assert.ok(body.data.token);
+  assert.equal(body.data.refreshToken, undefined);
+  const cookie = login.headers.get("set-cookie") || "";
+  assert.match(cookie, /^refreshToken=/);
+  assert.match(cookie, /HttpOnly/i);
+  assert.match(cookie, /Path=\/api\/auth/);
+});
+
+test("refresh ignores tokens sent in the body or the x-refresh-token header", async () => {
+  const fake = "a".repeat(96);
+  const response = await fetch(`${base}/auth/refresh`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-refresh-token": fake },
+    body: JSON.stringify({ refreshToken: fake }),
+  });
+  assert.equal(response.status, 401);
+  assert.equal((await response.json()).error.code, "NO_REFRESH_TOKEN");
 });

@@ -4,6 +4,8 @@ dist/
 .env.local
 .env.*
 !.env.example
+!.env.docker.example
+.env.docker
 frontend/playwright-report/
 frontend/test-results/
 *.log

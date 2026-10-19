@@ -89,3 +89,60 @@ export async function recordUsage({ userId, provider, modelId, usage }, { transa
     console.error("[Quota] Không thể ghi nhận token:", err.message);
   }
 }
+
+export const TIER_LIMITS = {
+  free: 50_000,       // 50k tokens / ngày
+  plus: 250_000,      // 250k tokens / ngày
+  premium: 1_000_000, // 1M tokens / ngày
+  // Legacy aliases
+  pro: 250_000,
+  vip: 1_000_000,
+};
+
+export function normalizeTier(tier) {
+  if (!tier) return "free";
+  const t = String(tier).toLowerCase().trim();
+  if (t === "pro") return "plus";
+  if (t === "vip") return "premium";
+  if (["free", "plus", "premium"].includes(t)) return t;
+  return "free";
+}
+
+export function getUserDailyLimit(user) {
+  if (user?.customDailyTokenLimit !== null && user?.customDailyTokenLimit !== undefined && user.customDailyTokenLimit > 0) {
+    return Number(user.customDailyTokenLimit);
+  }
+  const tier = normalizeTier(user?.userTier);
+  return TIER_LIMITS[tier] || TIER_LIMITS.free;
+}
+
+export async function getUserTodayQuota(user) {
+  const { startsAt, resetsAt } = getQuotaWindow();
+  const usageMap = await getUsageByModel(user.id, startsAt);
+
+  let usedToday = 0;
+  for (const u of usageMap.values()) {
+    usedToday += u.totalTokens;
+  }
+
+  const tier = normalizeTier(user.userTier);
+  const dailyLimit = getUserDailyLimit(user);
+  const remainingToday = Math.max(0, dailyLimit - usedToday);
+  const percentUsed = dailyLimit > 0 ? Math.min(100, Math.round((usedToday / dailyLimit) * 100)) : 0;
+  const isWarning = percentUsed >= 80 && percentUsed < 100;
+  const isExhausted = dailyLimit > 0 && usedToday >= dailyLimit;
+
+  return {
+    tier,
+    dailyLimit,
+    usedToday,
+    remainingToday,
+    percentUsed,
+    isWarning,
+    isExhausted,
+    startsAt,
+    resetsAt,
+    timezone: getTzLabel(),
+  };
+}
+

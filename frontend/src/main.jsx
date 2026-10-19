@@ -7,7 +7,11 @@ import { I18nProvider } from "./i18n/I18nContext.jsx";
 import { ThemeProvider } from "./context/ThemeContext.jsx";
 import { ToastProvider } from "./context/ToastContext.jsx";
 import { ConfirmProvider } from "./context/ConfirmContext.jsx";
+import { registerServiceWorker } from "./registerServiceWorker.js";
 import "./index.css";
+
+// Kích hoạt PWA Service Worker
+registerServiceWorker();
 
 // I18nProvider nằm trong AuthProvider (cần biết người dùng để đồng bộ ngôn ngữ) và bọc ngoài Toast/Confirm
 // để các thành phần này cũng dùng được t().

@@ -29,6 +29,40 @@ body {
   background: rgba(109, 91, 255, 0.35);
 }
 
+/* ─── Quota progress bar micro-animations ─── */
+/* Nhẹ hơn animate-pulse mặc định của Tailwind; dùng cho trạng thái cảnh báo (≥80%) */
+@keyframes quota-pulse-warn {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.65; }
+}
+/* Nhanh hơn; dùng cho trạng thái hết hạn mức (100%) */
+@keyframes quota-pulse-exhausted {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.45; }
+}
+
+.animate-quota-warn {
+  animation: quota-pulse-warn 1.4s ease-in-out infinite;
+}
+.animate-quota-exhausted {
+  animation: quota-pulse-exhausted 0.9s ease-in-out infinite;
+}
+
+/* ─── Focus-visible global ring utility ─── */
+/* Đảm bảo mọi thành phần tương tác hiển thị ring khi dùng bàn phím */
+:focus-visible {
+  outline: 2px solid rgba(109, 91, 255, 0.7);
+  outline-offset: 2px;
+}
+
+/* Nhưng ta vẫn dùng focus-visible:ring-* của Tailwind cho từng component cụ thể */
+/* nên chỉ áp dụng outline global cho những gì không có class focus-visible */
+button:not([class*="focus-visible"]):focus-visible,
+a:not([class*="focus-visible"]):focus-visible {
+  outline: 2px solid rgba(109, 91, 255, 0.7);
+  outline-offset: 2px;
+}
+
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
@@ -216,6 +250,18 @@ body {
 .theme-switch:focus-visible {
   outline: 2px solid #8a72ff;
   outline-offset: 3px;
+}
+/* Loại bỏ hoàn toàn viền vuông mặc định cho ô nhập liệu nằm trong khối thiết kế riêng */
+.chat-composer textarea,
+.chat-composer textarea:focus,
+.chat-composer textarea:focus-visible,
+#sidebar-search,
+#sidebar-search:focus,
+#sidebar-search:focus-visible {
+  outline: none !important;
+  outline-offset: 0 !important;
+  box-shadow: none !important;
+  border: none !important;
 }
 .workspace-ui :is(button, a, input, select, textarea) { -webkit-tap-highlight-color: transparent; }
 .workspace-muted { color: var(--workspace-muted); }
@@ -477,11 +523,42 @@ body {
 .chat-suggestion:hover { border-color: #8a72ff; background: var(--workspace-sidebar); }
 .chat-suggestion:disabled { opacity: .5; }
 .chat-composer-shell { flex-shrink: 0; padding-bottom: max(16px, env(safe-area-inset-bottom)); background: var(--workspace-bg); }
-.chat-composer { background: var(--workspace-panel); border-radius: 18px; display: grid; grid-template-columns: 40px 40px minmax(0, 1fr) 44px; gap: 5px; padding: 12px; border: 1px solid var(--workspace-border); box-shadow: 0 3px 16px #00000006; transition: border-color 160ms, box-shadow 160ms; }
-.chat-composer.is-focused { border-color: #8a72ff; box-shadow: 0 0 0 3px #8a72ff12; }
-.chat-composer textarea { grid-row: 1; grid-column: 1 / -1; width: 100%; min-width: 0; padding: 5px 5px 12px; }
-.chat-composer > .inline-flex { grid-row: 2; align-self: end; }
-.chat-composer > .inline-flex:last-child { grid-column: 4; }
+.chat-composer {
+  background: var(--workspace-panel);
+  border-radius: 20px;
+  display: flex;
+  flex-direction: column;
+  padding: 12px 14px 10px;
+  border: 1px solid var(--workspace-border);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04);
+  transition: border-color 180ms ease, box-shadow 180ms ease, background-color 180ms ease;
+}
+.chat-composer.is-focused,
+.chat-composer:focus-within {
+  border-color: #8a72ff;
+  box-shadow: 0 0 0 3px rgba(138, 114, 255, 0.16), 0 6px 24px rgba(138, 114, 255, 0.08);
+}
+.chat-composer textarea {
+  width: 100%;
+  min-width: 0;
+  padding: 4px 4px 8px;
+  border: none !important;
+  outline: none !important;
+  box-shadow: none !important;
+}
+.chat-composer-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  margin-top: 4px;
+}
+.chat-composer-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
 .workspace-ui .chat-composer-shell > p { color: var(--workspace-muted); font-size: 11px; }
 .chat-shell .markdown-body { color: var(--workspace-text); }
 .chat-shell .shadow-glow, .chat-shell .shadow-glow-ion { box-shadow: none; }
@@ -580,3 +657,44 @@ body {
     animation: none !important;
   }
 }
+
+/* ---------- In ấn & Xuất PDF chuyên nghiệp ---------- */
+@media print {
+  aside,
+  header,
+  .chat-composer-shell,
+  .chat-message-actions,
+  .aurora-bg,
+  nav,
+  button,
+  .print\:hidden {
+    display: none !important;
+  }
+
+  body, html, #root {
+    background: #ffffff !important;
+    color: #18181b !important;
+    height: auto !important;
+    overflow: visible !important;
+  }
+
+  .chat-shell, .workspace-ui {
+    height: auto !important;
+    overflow: visible !important;
+    display: block !important;
+  }
+
+  .markdown-body {
+    color: #18181b !important;
+    font-size: 11pt !important;
+    line-height: 1.6 !important;
+  }
+
+  pre, code {
+    background: #f4f4f5 !important;
+    color: #18181b !important;
+    border: 1px solid #e4e4e7 !important;
+    page-break-inside: avoid !important;
+  }
+}
+

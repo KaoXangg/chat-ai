@@ -27,10 +27,12 @@
 12. [Xác thực và bảo mật](#xác-thực-và-bảo-mật)
 13. [API](#api)
 14. [Build production](#build-production)
-15. [Xử lý sự cố](#xử-lý-sự-cố)
-16. [Hướng phát triển](#hướng-phát-triển)
-17. [Đóng góp](#đóng-góp)
-18. [Giấy phép](#giấy-phép)
+15. [Chạy bằng Docker](#chạy-bằng-docker)
+16. [Tích hợp liên tục (CI)](#tích-hợp-liên-tục-ci)
+17. [Xử lý sự cố](#xử-lý-sự-cố)
+18. [Hướng phát triển](#hướng-phát-triển)
+19. [Đóng góp](#đóng-góp)
+20. [Giấy phép](#giấy-phép)
 
 ## Tính năng
 
@@ -375,6 +377,62 @@ npm run build
 ```
 
 Kết quả nằm trong `frontend/dist/`, thường không cần commit lên Git. Khi triển khai: đặt `NODE_ENV=production`, cập nhật `CLIENT_URL` đúng domain, dùng HTTPS và sao lưu database định kỳ.
+
+## Chạy bằng Docker
+
+Dự án cung cấp `docker-compose.yml` định nghĩa sẵn các dịch vụ cho môi trường dev/local:
+- `db`: Microsoft SQL Server 2022 (`mcr.microsoft.com/mssql/server:2022-latest`) kèm healthcheck `sqlcmd`.
+- `db-init`: Khởi tạo cơ sở dữ liệu `chat_ai` tự động (nếu chưa có, không làm mất dữ liệu cũ).
+- `backend`: Node.js Express API chạy dưới user phi root `node` và healthcheck `/health`.
+- `frontend`: Giao diện React build bằng Vite, phục vụ qua Nginx với cấu hình SPA fallback, nén Gzip và cache headers.
+
+### Khởi chạy
+
+```bash
+# 1. Tạo file cấu hình từ mẫu
+cp .env.docker.example .env.docker
+
+# 2. Khởi chạy toàn bộ hệ thống bằng Docker Compose
+docker compose --env-file .env.docker up --build -d
+```
+
+### Xem log
+
+```bash
+# Xem log tổng hợp của tất cả dịch vụ
+docker compose logs -f
+
+# Hoặc xem riêng từng dịch vụ
+docker compose logs -f backend
+docker compose logs -f db
+docker compose logs -f frontend
+```
+
+### Dừng và xóa dữ liệu (Reset DB)
+
+```bash
+# Dừng các container (giữ nguyên dữ liệu volume)
+docker compose down
+
+# Dừng và xóa sạch volume database (dữ liệu được khởi tạo lại từ đầu ở lần chạy sau)
+docker compose down -v
+```
+
+## Tích hợp liên tục (CI)
+
+Hệ thống CI tự động chạy thông qua GitHub Actions (`.github/workflows/ci.yml`) khi có `push` hoặc `pull_request` vào nhánh `main`:
+
+1. **Job `backend`**:
+   - Khởi tạo môi trường Node.js 22 LTS với cache npm.
+   - Chạy `npm test` với 60 test tự động (xác thực, mã hóa secret, rate limit, quota replay, distributed chat lock). Toàn bộ test sử dụng mock cách ly, không cần kết nối tới SQL Server ngoài.
+2. **Job `frontend`**:
+   - Khởi tạo Node.js 22, cài đặt Playwright Chromium và các dependency hệ điều hành.
+   - Chạy 17 test E2E Playwright trên bản build preview với mock API (`**/api/**`). Tự động tải lên artifact `playwright-report` nếu có test thất bại.
+3. **Job `docker-build`**:
+   - Chạy sau khi backend và frontend test đều vượt qua thành công.
+   - Thực hiện `docker build` kiểm tra tính hợp lệ của cả `backend/Dockerfile` và `frontend/Dockerfile` (không push lên registry).
+
+> ⚠️ Lưu ý: Script E2E hạn mức `backend/scripts/quota-e2e.js` yêu cầu máy chủ thực tế đang chạy và API key AI của nhà cung cấp, nên không đưa vào pipeline CI.
 
 ## Xử lý sự cố
 

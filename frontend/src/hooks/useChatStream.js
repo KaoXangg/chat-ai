@@ -70,10 +70,11 @@ export function useChatStream() {
       if (!res.ok || !res.body) {
         const errJson = await res.json().catch(() => null);
         handleSessionError(res.status, errJson?.error?.code);
+        const retryAfter = res.headers.get("retry-after") || errJson?.error?.details?.retryAfter;
         throw new StreamRequestError(
           errJson?.error?.message || "",
           errJson?.error?.code || (res.status === 429 ? "RATE_LIMITED" : "REQUEST_FAILED"),
-          errJson?.data || {}
+          { ...(errJson?.error?.details || {}), ...(errJson?.data || {}), retryAfter, status: res.status }
         );
       }
 
@@ -116,6 +117,9 @@ export function useChatStream() {
           if (data.done) {
             finished = true;
             onDone?.(data);
+            try {
+              window.dispatchEvent(new Event("quota-updated"));
+            } catch {}
           }
         }
       }
