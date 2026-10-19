@@ -286,18 +286,41 @@ Khi một provider gặp lỗi hoặc hết hạn mức, bộ định tuyến s�
 
 ## Cơ sở dữ liệu
 
-Toàn bộ SQL nằm trong một file `backend/sql/schema.sql`: tạo database và bảng, bổ sung các cột còn thiếu trên DB cũ, tạo index và đặt hạn mức token. Chạy toàn bộ file bằng SSMS / sqlcmd. Các model chính (thư mục `backend/models/`):
+Hệ thống sử dụng Microsoft SQL Server (2019/2022/Azure SQL) với 12 bảng chuẩn hóa. Cấu trúc chi tiết và sơ đồ ERD được trình bày tại [docs/DATABASE.md](docs/DATABASE.md).
 
-| Model | Mô tả |
-|---|---|
-| `User` | Người dùng: mật khẩu băm bcrypt, vai trò, trạng thái khóa |
-| `Conversation` | Cuộc hội thoại: tiêu đề, trạng thái ghim, chủ sở hữu |
-| `Message` | Tin nhắn trong hội thoại: nội dung, vai trò (người dùng / AI), model sử dụng |
-| `AIModel` | Danh sách mô hình AI: provider, trạng thái bật/tắt, model mặc định |
+### Khởi tạo CSDL trên máy mới
 
-Quan hệ chính: `User` 1–N `Conversation`; `Conversation` 1–N `Message`.
+Để thiết lập cơ sở dữ liệu trên máy trạm hoặc máy chủ mới:
 
-Phần cuối script đặt hạn mức mỗi người dùng / model / ngày cho các model đang có `dailyTokenLimit = 0`: Gemini **100.000**, Groq **50.000**, OpenRouter **30.000**, provider khác **50.000** token. Hạn mức khác `0` được giữ nguyên. Vì `0` trong ứng dụng có nghĩa là không giới hạn, nếu muốn dùng không giới hạn hãy đặt lại `0` trong Admin sau khi chạy script. Script không tạo tài khoản admin hoặc danh sách model; với DB mới, chạy `npm run seed` rồi chạy lại script để áp dụng hạn mức cho model vừa tạo.
+1. **Cấu hình biến môi trường kết nối trong `backend/.env`**:
+   ```env
+   DB_HOST=localhost
+   DB_PORT=1433
+   DB_NAME=chat_ai
+   DB_USER=your_sql_user
+   DB_PASSWORD=your_sql_password
+   DB_ENCRYPT=false
+   DB_TRUST_SERVER_CERT=true
+   ```
+
+2. **Khởi tạo schema bảng và chỉ mục (Transact-SQL)**:
+   - Sử dụng **sqlcmd** (Command Prompt / PowerShell):
+     ```bash
+     sqlcmd -S localhost -U your_sql_user -P your_sql_password -C -i backend/database/schema.sql
+     ```
+   - Hoặc mở file [`backend/database/schema.sql`](backend/database/schema.sql) trong **SQL Server Management Studio (SSMS)** hoặc **Azure Data Studio** và nhấn **Execute (F5)**.
+   - *File mang tính lũy đẳng (idempotent), an toàn khi chạy lại nhiều lần và không làm mất dữ liệu cũ.*
+
+3. **Khởi tạo dữ liệu mẫu và tài khoản Quản trị viên (Admin)**:
+   - Khởi tạo SystemSettings và AI Models mặc định:
+     ```bash
+     sqlcmd -S localhost -U your_sql_user -P your_sql_password -C -i backend/database/seed.sql
+     ```
+   - Tạo tài khoản Admin an toàn theo mật khẩu trong `backend/.env`:
+     ```bash
+     cd backend
+     npm run seed
+     ```
 
 Gửi lại cùng `requestId` không tạo thêm câu hỏi hoặc tính lại token cho câu trả lời đã hoàn tất. Khóa ứng dụng SQL Server (`sp_getapplock`) tuần tự hóa chat theo người dùng và hội thoại, kể cả khi chạy nhiều backend; yêu cầu trùng lúc nhận `409 CHAT_BUSY`. Pool giữ khóa được tách khỏi pool truy vấn để các luồng streaming không chặn việc lưu dữ liệu. Mỗi lượt chat đang stream giữ 1 kết nối khóa; số luồng song song tối đa ≈ `CHAT_LOCK_POOL_MAX`.
 
