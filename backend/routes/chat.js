@@ -4,14 +4,16 @@ import { sequelize } from "../config/db.js";
 import Conversation from "../models/Conversation.js";
 import Message from "../models/Message.js";
 import AIModel from "../models/AIModel.js";
-import { getExhaustedModels, recordUsage, getTzLabel } from "../utils/quota.js";
+import { getExhaustedModels, recordUsage, getTzLabel, getUserTodayQuota } from "../utils/quota.js";
 import { authMiddleware } from "../middleware/auth.js";
 import { chatLimiter } from "../middleware/rateLimit.js";
 import { streamWithFallback, generateConversationTitle, AI_ERROR_CODES } from "../providers/aiRouter.js";
 import { searchWeb, isWebSearchConfigured } from "../providers/webSearch.js";
 import { aiLanguageDirective } from "../utils/languages.js";
-import { serializeChat } from "../utils/chatLock.js";
+import { serializeChat, withDatabaseLocks, userChatLock, conversationLock } from "../utils/chatLock.js";
 import { validateIdParam } from "../utils/validation.js";
+import { getSystemSettings } from "../models/SystemSetting.js";
+import { checkQuotaMiddleware, assertUserQuota } from "../middleware/checkQuota.js";
 
 const router = express.Router();
 router.use(authMiddleware);
@@ -80,7 +82,11 @@ function normalizeImages(image, images) {
   return [];
 }
 
-async function buildHistory(conversationId, extraContext = "", aiLanguage = "auto", lastUserMessageId = null) {
+async function buildHistory(conversation, extraContext = "", aiLanguage = "auto", lastUserMessageId = null, customInstruction = "") {
+  const conversationId = typeof conversation === "object" ? conversation.id : conversation;
+  const conversationPrompt = typeof conversation === "object" ? conversation.systemPrompt : "";
+  const effectivePrompt = (conversationPrompt || customInstruction || "").trim();
+
   const history = await Message.findAll({
     where: { conversationId, ...(lastUserMessageId ? { id: { [Op.lte]: lastUserMessageId } } : {}) },
     order: [["createdAt", "DESC"], ["id", "DESC"]],
@@ -89,7 +95,8 @@ async function buildHistory(conversationId, extraContext = "", aiLanguage = "aut
   history.reverse();
 
   // Ngôn ngữ trả lời do người dùng chọn (Users.aiLanguage); "auto" thì AI tự theo ngôn ngữ tin nhắn.
-  const systemContent = [SYSTEM_PROMPT, aiLanguageDirective(aiLanguage), extraContext].filter(Boolean).join("\n\n");
+  const customSection = effectivePrompt ? `Custom Instructions / User Persona:\n${effectivePrompt}` : null;
+  const systemContent = [SYSTEM_PROMPT, customSection, aiLanguageDirective(aiLanguage), extraContext].filter(Boolean).join("\n\n");
 
   return [
     { role: "system", content: systemContent },
@@ -149,7 +156,7 @@ async function runStream(req, res, conversation, messagesForAI, { webSources = [
     }
     const catalog = await loadModelCatalog();
     // Model mà người dùng đã dùng hết hạn mức token hôm nay sẽ bị router bỏ qua.
-    const excludedModels = await getExhaustedModels(req.user.id, catalog);
+    const excludedModels = await getExhaustedModels(req.user.id, catalog, req.user.userTier);
     for await (const item of streamWithFallback(messagesForAI, conversation.provider, conversation.model, { catalog, excludedModels, signal })) {
       usedProvider = item.provider;
       usedModel = item.model;
@@ -197,9 +204,11 @@ async function runStream(req, res, conversation, messagesForAI, { webSources = [
   } catch (err) {
     const interrupted = signal.aborted || err.name === "AbortError";
     if (!interrupted) console.error("[Chat Stream] Lỗi:", err.message);
-    // Câu trả lời dở dang vẫn đã tiêu tốn token -> ghi nhận bản ước lượng.
-    if (!usageRecorded && (err.usage || usage)) {
-      await recordUsage({ userId: req.user.id, provider: err.provider || usedProvider, modelId: err.model || usedModel, usage: err.usage || usage });
+    // Câu trả lời dở dang vẫn đã tiêu tốn token -> ghi nhận bản thực tế hoặc ước lượng.
+    const fallbackUsage = fullResponse ? { promptTokens: 0, completionTokens: Math.ceil(fullResponse.length / 3), estimated: true } : null;
+    const finalUsage = err.usage || usage || fallbackUsage;
+    if (!usageRecorded && finalUsage) {
+      await recordUsage({ userId: req.user.id, provider: err.provider || usedProvider, modelId: err.model || usedModel, usage: finalUsage });
     }
     if (fullResponse && !assistantMessage) {
       try {
@@ -229,7 +238,7 @@ async function runStream(req, res, conversation, messagesForAI, { webSources = [
   }
 }
 
-router.post("/:conversationId/stream", chatLimiter, serializeChat(async (req, res, next) => {
+router.post("/:conversationId/stream", chatLimiter, async (req, res, next) => {
   try {
     const { content, image, images, useWebSearch, requestId } = req.body;
     if (images !== undefined && (!Array.isArray(images) || images.length > MAX_IMAGES_PER_MESSAGE)) {
@@ -245,32 +254,37 @@ router.post("/:conversationId/stream", chatLimiter, serializeChat(async (req, re
       return jsonError(res, 400, "MESSAGE_TOO_LONG", `Tin nhắn quá dài (tối đa ${MAX_MESSAGE_LENGTH} ký tự).`);
     }
 
-    const conversation = await Conversation.findOne({ where: { id: req.params.conversationId, userId: req.user.id } });
+    // Bộ lọc từ khóa cấm / Content Moderation (Bảo vệ hệ thống & Tiết kiệm token)
+    const systemSettings = await getSystemSettings();
+    if (systemSettings.blockedKeywords) {
+      const keywords = systemSettings.blockedKeywords
+        .split(",")
+        .map((k) => k.trim().toLowerCase())
+        .filter(Boolean);
+      const lowerText = content.toLowerCase();
+      const matched = keywords.find((kw) => kw.length > 1 && lowerText.includes(kw));
+      if (matched) {
+        return jsonError(
+          res, 
+          400, 
+          "CONTENT_VIOLATION", 
+          `Tin nhắn chứa từ khóa bị giới hạn bởi chính sách an toàn của hệ thống ("${matched}"). Vui lòng chỉnh sửa lại câu hỏi.`
+        );
+      }
+    }
+
+    const convId = Number(req.params.conversationId);
+    if (!Number.isSafeInteger(convId) || convId <= 0 || convId > 2147483647) {
+      return jsonError(res, 400, "INVALID_INPUT", "Hội thoại không hợp lệ.");
+    }
+
+    const conversation = await Conversation.findOne({ where: { id: convId, userId: req.user.id } });
     if (!conversation) {
       return jsonError(res, 404, "NOT_FOUND", "Không tìm thấy cuộc trò chuyện.");
     }
 
-    const imageList = normalizeImages(image, images);
-
-    if (imageList.length) {
-      // Quyết định theo capability "vision" của model đang chọn (admin cấu hình), không hard-code theo provider.
-      const selected = await AIModel.findOne({
-        where: { provider: conversation.provider, modelId: conversation.model, enabled: true },
-      });
-      const canSeeImages = selected?.capabilities?.includes("vision");
-      if (!canSeeImages) {
-        return jsonError(res, 400, "IMAGE_NOT_SUPPORTED", "Mô hình đang chọn không hỗ trợ phân tích hình ảnh. Hãy chọn mô hình có nhãn Vision.");
-      }
-      for (const img of imageList) {
-        if (typeof img?.data !== "string" || !img.data || typeof img.mimeType !== "string"
-          || !/^image\/(png|jpeg|jpg|gif|webp|heic|heif|avif)$/i.test(img.mimeType)
-          || img.data.length > MAX_IMAGE_BASE64_LENGTH || !/^[A-Za-z0-9+/]+={0,2}$/.test(img.data)
-          || Buffer.byteLength(img.data, "base64") > 6 * 1024 * 1024) {
-          return jsonError(res, 400, "INVALID_IMAGE", "Có ảnh không hợp lệ hoặc quá lớn (tối đa 6MB mỗi ảnh).");
-        }
-      }
-    }
-
+    // 1. Bước phát lại (replay): Nếu request retry đã có câu trả lời lưu sẵn, phát lại ngay lập tức
+    // mà KHÔNG bị chặn bởi checkQuota (kể cả khi user đã hết quota) và KHÔNG bị CHAT_BUSY.
     let userMessage = requestId && await Message.findOne({ where: { conversationId: conversation.id, role: "user", requestId } });
     let replacement = null;
     if (userMessage) {
@@ -289,35 +303,67 @@ router.post("/:conversationId/stream", chatLimiter, serializeChat(async (req, re
         return res.end();
       }
       if (nextQuestion) return jsonError(res, 409, "REQUEST_ALREADY_PROCESSED", "Tin nhắn đã được lưu. Hãy tải lại hội thoại.");
-    } else {
-      userMessage = await sequelize.transaction(async (transaction) => {
-        const message = await Message.create({
-          conversationId: conversation.id, requestId: requestId || null,
-          role: "user", content: content.trim(),
-          imageBase64: imageList[0]?.data || null,
-          imageMimeType: imageList[0]?.mimeType || null,
-          images: imageList.length ? imageList : null,
-        }, { transaction });
-        await touchConversation(conversation, transaction);
-        return message;
-      });
     }
-    req.chatMutation = { persisted: true, userMessageId: String(userMessage.id) };
-    await runStream(req, res, conversation, async () => {
-      if (["Cuoc tro chuyen moi", "Cuộc trò chuyện mới"].includes(conversation.title)) {
-        conversation.title = await generateConversationTitle(content.trim(), { signal: req.chatSignal });
-        await touchConversation(conversation);
+
+    // 2. Không phải replay đã lưu sẵn -> Kiểm tra hạn mức token (Quota) trước khi gọi provider
+    await assertUserQuota(req.user, res);
+
+    // 3. Khóa chống chat song song duy nhất qua utils/chatLock.js
+    await withDatabaseLocks([userChatLock(req.user.id), conversationLock(conversation.id)], async () => {
+      const imageList = normalizeImages(image, images);
+
+      if (imageList.length) {
+        const selected = await AIModel.findOne({
+          where: { provider: conversation.provider, modelId: conversation.model, enabled: true },
+        });
+        const canSeeImages = selected?.capabilities?.includes("vision");
+        if (!canSeeImages) {
+          return jsonError(res, 400, "IMAGE_NOT_SUPPORTED", "Mô hình đang chọn không hỗ trợ phân tích hình ảnh. Hãy chọn mô hình có nhãn Vision.");
+        }
+        for (const img of imageList) {
+          if (typeof img?.data !== "string" || !img.data || typeof img.mimeType !== "string"
+            || !/^image\/(png|jpeg|jpg|gif|webp|heic|heif|avif)$/i.test(img.mimeType)
+            || img.data.length > MAX_IMAGE_BASE64_LENGTH || !/^[A-Za-z0-9+/]+={0,2}$/.test(img.data)
+            || Buffer.byteLength(img.data, "base64") > 6 * 1024 * 1024) {
+            return jsonError(res, 400, "INVALID_IMAGE", "Có ảnh không hợp lệ hoặc quá lớn (tối đa 6MB mỗi ảnh).");
+          }
+        }
       }
-      const { webSources, webContext } = await getWebContext(useWebSearch, content.trim(), req.chatSignal);
-      return { webSources, messages: await buildHistory(conversation.id, webContext, req.user.aiLanguage, userMessage.id) };
-    }, { userMessageId: userMessage.id, replaceMessageId: replacement?.id, replaceAfterId: userMessage.id });
+
+      if (!userMessage) {
+        userMessage = await sequelize.transaction(async (transaction) => {
+          const message = await Message.create({
+            conversationId: conversation.id, requestId: requestId || null,
+            role: "user", content: content.trim(),
+            imageBase64: imageList[0]?.data || null,
+            imageMimeType: imageList[0]?.mimeType || null,
+            images: imageList.length ? imageList : null,
+          }, { transaction });
+          await touchConversation(conversation, transaction);
+          return message;
+        });
+      }
+      req.chatMutation = { persisted: true, userMessageId: String(userMessage.id) };
+      await runStream(req, res, conversation, async () => {
+        if (["Cuoc tro chuyen moi", "Cuộc trò chuyện mới"].includes(conversation.title)) {
+          conversation.title = await generateConversationTitle(content.trim(), { signal: req.chatSignal });
+          await touchConversation(conversation);
+        }
+        const { webSources, webContext } = await getWebContext(useWebSearch, content.trim(), req.chatSignal);
+        return { webSources, messages: await buildHistory(conversation, webContext, req.user.aiLanguage, userMessage.id, req.user.systemPrompt) };
+      }, { userMessageId: userMessage.id, replaceMessageId: replacement?.id, replaceAfterId: userMessage.id });
+    });
   } catch (err) {
-    if (req.chatSignal.aborted) return;
+    if (req.chatSignal?.aborted) return;
+    if (err.code === "CHAT_BUSY" && !res.headersSent) {
+      res.setHeader("Retry-After", "3");
+      return res.status(409).json({ success: false, error: { code: err.code, message: err.message, details: { retryAfter: 3 } } });
+    }
     next(err);
   }
-}));
+});
 
-router.post("/:conversationId/regenerate", chatLimiter, serializeChat(async (req, res, next) => {
+router.post("/:conversationId/regenerate", chatLimiter, checkQuotaMiddleware, serializeChat(async (req, res, next) => {
   try {
     const conversation = await Conversation.findOne({ where: { id: req.params.conversationId, userId: req.user.id } });
     if (!conversation) {
@@ -328,7 +374,7 @@ router.post("/:conversationId/regenerate", chatLimiter, serializeChat(async (req
     const lastUserMessage = await Message.findOne({ where: { conversationId: conversation.id, role: "user" }, order: [["createdAt", "DESC"], ["id", "DESC"]] });
     if (!lastUserMessage) return jsonError(res, 400, "EMPTY_MESSAGE", "Không có tin nhắn để tạo lại câu trả lời.");
     const replaceMessageId = lastMessage?.role === "assistant" && lastMessage.id > lastUserMessage.id ? lastMessage.id : null;
-    const messagesForAI = await buildHistory(conversation.id, "", req.user.aiLanguage, lastUserMessage.id);
+    const messagesForAI = await buildHistory(conversation, "", req.user.aiLanguage, lastUserMessage.id, req.user.systemPrompt);
     await runStream(req, res, conversation, messagesForAI, { replaceMessageId, replaceAfterId: lastUserMessage.id });
   } catch (err) {
     next(err);
@@ -340,7 +386,7 @@ router.post("/:conversationId/regenerate", chatLimiter, serializeChat(async (req
  * cập nhật nội dung tin nhắn, xóa toàn bộ tin nhắn phía sau nó, rồi stream câu trả lời mới.
  * Ảnh đính kèm của tin nhắn gốc được giữ nguyên.
  */
-router.post("/:conversationId/edit/:messageId", chatLimiter, serializeChat(async (req, res, next) => {
+router.post("/:conversationId/edit/:messageId", chatLimiter, checkQuotaMiddleware, serializeChat(async (req, res, next) => {
   try {
     const content = typeof req.body.content === "string" ? req.body.content.trim() : "";
     if (!content) {
@@ -372,7 +418,7 @@ router.post("/:conversationId/edit/:messageId", chatLimiter, serializeChat(async
     req.chatMutation = { persisted: true, userMessageId: String(target.id) };
     await runStream(req, res, conversation, async () => {
       const { webSources, webContext } = await getWebContext(req.body.useWebSearch, content, req.chatSignal);
-      return { webSources, messages: await buildHistory(conversation.id, webContext, req.user.aiLanguage, target.id) };
+      return { webSources, messages: await buildHistory(conversation, webContext, req.user.aiLanguage, target.id, req.user.systemPrompt) };
     }, { userMessageId: target.id });
   } catch (err) {
     next(err);

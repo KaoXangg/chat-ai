@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { NavLink, Outlet, useNavigate, useLocation } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
-import { LayoutDashboard, Users, Cpu, MessagesSquare, MessageSquare, ArrowUpRight, LogOut, Menu, X, ChevronRight, Dices, Loader2, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { LayoutDashboard, Users, Cpu, MessagesSquare, MessageSquare, ArrowUpRight, LogOut, Menu, X, ChevronRight, Dices, Loader2, PanelLeftClose, PanelLeftOpen, Sliders, Bot, History, Megaphone, Smartphone } from "lucide-react";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { useToast } from "../../context/ToastContext.jsx";
 import { useModalA11y } from "../../hooks/useModalA11y.js";
@@ -15,8 +15,13 @@ import { useI18n } from "../../i18n/I18nContext.jsx";
 
 const NAV_ITEMS = [
   { to: "/admin", icon: LayoutDashboard, labelKey: "admin.nav.dashboard", end: true },
+  { to: "/admin/settings", icon: Sliders, labelKey: "admin.nav.settings" },
+  { to: "/admin/announcements", icon: Megaphone, labelKey: "admin.nav.announcements" },
   { to: "/admin/users", icon: Users, labelKey: "admin.nav.users" },
+  { to: "/admin/sessions", icon: Smartphone, labelKey: "admin.nav.sessions" },
   { to: "/admin/models", icon: Cpu, labelKey: "admin.nav.models" },
+  { to: "/admin/personas", icon: Bot, labelKey: "admin.nav.personas" },
+  { to: "/admin/audit-logs", icon: History, labelKey: "admin.nav.auditLogs" },
   { to: "/admin/conversations", icon: MessagesSquare, labelKey: "admin.nav.conversations" },
 ];
 
@@ -80,7 +85,7 @@ export default function AdminLayout() {
   }, []);
 
   const currentItem = NAV_ITEMS.find((n) => (n.end ? location.pathname === n.to : location.pathname.startsWith(n.to)));
-  const currentLabel = currentItem ? t(currentItem.labelKey) : t("admin.nav.fallbackTitle");
+  const currentLabel = currentItem ? (currentItem.title || t(currentItem.labelKey)) : t("admin.nav.fallbackTitle");
 
   const handleRandomAvatar = async () => {
     if (avatarBusy) return;
@@ -131,14 +136,17 @@ export default function AdminLayout() {
           </div>
           <nav className="admin-nav" aria-label={t("admin.nav.fallbackTitle")}>
             <p className="admin-nav-label">{t("admin.layout.workspace")}</p>
-            {NAV_ITEMS.map(({ to, icon: Icon, labelKey, end }) => (
-              <NavLink key={to} to={to} end={end} onClick={() => setDrawerOpen(false)} aria-label={t(labelKey)}
-                className={({ isActive }) => clsx("admin-nav-item", isActive && "is-active")}>
-                <Icon size={19} strokeWidth={1.8} aria-hidden="true" />
-                <span className="admin-nav-text flex-1">{t(labelKey)}</span>
-                <ChevronRight size={14} className="admin-nav-chevron" aria-hidden="true" />
-              </NavLink>
-            ))}
+            {NAV_ITEMS.map(({ to, icon: Icon, labelKey, end }) => {
+              const displayLabel = t(labelKey);
+              return (
+                <NavLink key={to} to={to} end={end} onClick={() => setDrawerOpen(false)} aria-label={displayLabel}
+                  className={({ isActive }) => clsx("admin-nav-item", isActive && "is-active")}>
+                  <Icon size={19} strokeWidth={1.8} aria-hidden="true" />
+                  <span className="admin-nav-text flex-1">{displayLabel}</span>
+                  <ChevronRight size={14} className="admin-nav-chevron" aria-hidden="true" />
+                </NavLink>
+              );
+            })}
           </nav>
           <div className="admin-sidebar-footer">
             <button type="button" onClick={() => navigate("/chat")} aria-label={t("admin.layout.backToChat")} className="workspace-route-button workspace-route-button--chat">

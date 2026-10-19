@@ -154,4 +154,5 @@ export default {
   "admin.form.required": "Introduce tanto el ID del modelo como el nombre para mostrar.",
   "admin.form.updated": "Modelo actualizado.",
   "admin.form.created": "Nuevo modelo añadido.",
+  "admin.nav.sessions": "Dispositivos y sesiones",
 };

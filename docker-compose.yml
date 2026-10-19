@@ -1,0 +1,112 @@
+services:
+  # ==========================================
+  # 1. Cơ sở dữ liệu: Microsoft SQL Server 2022
+  # ==========================================
+  db:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: chat_ai_db
+    restart: unless-stopped
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD:-ChatAi@StrongPass2026!}
+      MSSQL_PID: Developer
+    ports:
+      - "${DB_PORT:-1433}:1433"
+    volumes:
+      - mssql_data:/var/opt/mssql
+    healthcheck:
+      test: >
+        /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$$MSSQL_SA_PASSWORD" -C -Q "SELECT 1" ||
+        /opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P "$$MSSQL_SA_PASSWORD" -Q "SELECT 1"
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    networks:
+      - chat_ai_network
+
+  # ==========================================
+  # 1.1 Khởi tạo Database (chạy 1 lần nếu chưa có)
+  # ==========================================
+  db-init:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: chat_ai_db_init
+    restart: "no"
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD:-ChatAi@StrongPass2026!}
+      DB_NAME: ${DB_NAME:-chat_ai}
+    entrypoint: >
+      /bin/bash -c "
+      echo 'Kiểm tra cơ sở dữ liệu [$$DB_NAME]...';
+      if [ -f /opt/mssql-tools18/bin/sqlcmd ]; then
+        /opt/mssql-tools18/bin/sqlcmd -S db -U sa -P \"$$MSSQL_SA_PASSWORD\" -C -Q \"IF DB_ID(N'$$DB_NAME') IS NULL CREATE DATABASE [$$DB_NAME];\";
+      else
+        /opt/mssql-tools/bin/sqlcmd -S db -U sa -P \"$$MSSQL_SA_PASSWORD\" -Q \"IF DB_ID(N'$$DB_NAME') IS NULL CREATE DATABASE [$$DB_NAME];\";
+      fi
+      echo 'Cơ sở dữ liệu [$$DB_NAME] đã sẵn sàng.';
+      "
+    networks:
+      - chat_ai_network
+
+  # ==========================================
+  # 2. Backend API Service
+  # ==========================================
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: chat_ai_backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      db-init:
+        condition: service_completed_successfully
+    env_file:
+      - path: .env.docker
+        required: false
+      - path: .env
+        required: false
+    environment:
+      - NODE_ENV=production
+      - DB_HOST=db
+      - DB_PORT=${DB_PORT:-1433}
+      - DB_NAME=${DB_NAME:-chat_ai}
+      - DB_USER=${DB_USER:-sa}
+      - DB_PASSWORD=${MSSQL_SA_PASSWORD:-ChatAi@StrongPass2026!}
+      - DB_ENCRYPT=false
+      - DB_TRUST_SERVER_CERT=true
+      - PORT=${PORT:-5000}
+    ports:
+      - "${PORT:-5000}:5000"
+    networks:
+      - chat_ai_network
+
+  # ==========================================
+  # 3. Frontend Web Service (Nginx)
+  # ==========================================
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: ${VITE_API_URL:-/api}
+    container_name: chat_ai_frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "${FRONTEND_PORT:-80}:80"
+    networks:
+      - chat_ai_network
+
+volumes:
+  mssql_data:
+    driver: local
+
+networks:
+  chat_ai_network:
+    driver: bridge

@@ -79,7 +79,10 @@ const Message = sequelize.define(
   {
     tableName: "Messages",
     timestamps: true,
-    indexes: [{ fields: ["conversationId"] }],
+    indexes: [
+      { fields: ["conversationId"] },
+      { fields: ["conversationId", "createdAt"] },
+    ],
   }
 );
 

@@ -5,7 +5,8 @@ import rehypeKatex from "rehype-katex";
 import "katex/dist/katex.min.css";
 import { PrismLight as SyntaxHighlighter } from "react-syntax-highlighter";
 import { oneDark, oneLight } from "react-syntax-highlighter/dist/esm/styles/prism";
-import { Copy, RotateCcw, ThumbsUp, ThumbsDown, Check, X, ChevronLeft, ChevronRight, Pencil, AlertTriangle, ImageOff } from "lucide-react";
+import { Copy, RotateCcw, ThumbsUp, ThumbsDown, Check, X, ChevronLeft, ChevronRight, Pencil, AlertTriangle, ImageOff, Volume2, VolumeX, Eye, Code2, Maximize2, GitFork } from "lucide-react";
+import CodePreviewModal, { preparePreviewDoc } from "./CodePreviewModal.jsx";
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import clsx from "clsx";
@@ -184,6 +185,21 @@ function CodeBlock({ language, code }) {
   const { t } = useI18n();
   const { theme } = useTheme();
   const [copied, setCopied] = useState(false);
+  const [activeTab, setActiveTab] = useState("code"); // "code" | "preview"
+  const [modalOpen, setModalOpen] = useState(false);
+
+  const langLower = (language || "").toLowerCase();
+  const isPreviewable =
+    ["html", "htm", "markup", "svg", "xml"].includes(langLower) ||
+    (typeof code === "string" &&
+      (code.includes("<!DOCTYPE html") ||
+        code.includes("<html") ||
+        code.includes("<svg") ||
+        code.includes("<div") ||
+        code.includes("<style>") ||
+        code.includes("<canvas") ||
+        code.includes("<button")));
+
   const copy = async () => {
     try {
       await navigator.clipboard.writeText(code);
@@ -193,27 +209,99 @@ function CodeBlock({ language, code }) {
       /* clipboard unavailable */
     }
   };
+
   return (
-    <div
-      data-copy-code={code}
-      dir="ltr"
-      className="my-4 rounded-xl overflow-hidden border border-edge-light dark:border-edge-dark bg-[#fafafa] dark:bg-[#282c34] max-w-full"
-    >
-      <div className="flex items-center justify-between px-4 py-2 bg-black/5 dark:bg-white/5 text-xs text-zinc-600 dark:text-zinc-300">
-        <span className="font-mono">{language || "code"}</span>
-        <button onClick={copy} aria-label={t("msg.codeCopyAria")} className="flex items-center gap-1.5 hover:text-zinc-900 dark:hover:text-white transition-colors">
-          {copied ? <Check size={13} /> : <Copy size={13} />}
-          {copied ? t("msg.codeCopied") : t("msg.codeCopy")}
-        </button>
-      </div>
-      <SyntaxHighlighter
-        language={language || "text"}
-        style={theme === "dark" ? oneDark : oneLight}
-        customStyle={{ margin: 0, borderRadius: 0, background: "transparent", fontSize: "13px", padding: "1rem" }}
+    <>
+      <div
+        data-copy-code={code}
+        dir="ltr"
+        className="my-4 rounded-xl overflow-hidden border border-edge-light dark:border-edge-dark bg-[#fafafa] dark:bg-[#282c34] max-w-full shadow-xs"
       >
-        {code}
-      </SyntaxHighlighter>
-    </div>
+        <div className="flex items-center justify-between px-3 py-2 bg-black/5 dark:bg-white/5 text-xs text-zinc-600 dark:text-zinc-300">
+          <div className="flex items-center gap-2">
+            <span className="font-mono font-medium">{language || "code"}</span>
+            {isPreviewable && (
+              <div className="flex items-center gap-1 p-0.5 rounded-lg bg-black/5 dark:bg-white/10 text-[11px]">
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("code")}
+                  className={clsx(
+                    "flex items-center gap-1 px-2 py-0.5 rounded-md transition-colors",
+                    activeTab === "code"
+                      ? "bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 shadow-xs font-medium"
+                      : "text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200"
+                  )}
+                >
+                  <Code2 size={12} /> Code
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("preview")}
+                  className={clsx(
+                    "flex items-center gap-1 px-2 py-0.5 rounded-md transition-colors",
+                    activeTab === "preview"
+                      ? "bg-brand-500 text-white shadow-xs font-medium"
+                      : "text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200"
+                  )}
+                >
+                  <Eye size={12} /> Xem trước
+                </button>
+              </div>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2">
+            {isPreviewable && (
+              <button
+                type="button"
+                onClick={() => setModalOpen(true)}
+                title="Mở rộng xem trước (Responsive)"
+                className="flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-black/5 dark:hover:bg-white/10 text-zinc-600 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-white transition-colors"
+              >
+                <Maximize2 size={13} />
+                <span className="hidden sm:inline">Phóng to</span>
+              </button>
+            )}
+            <button
+              onClick={copy}
+              aria-label={t("msg.codeCopyAria")}
+              className="flex items-center gap-1.5 px-2 py-1 rounded-lg hover:bg-black/5 dark:hover:bg-white/10 text-zinc-600 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-white transition-colors"
+            >
+              {copied ? <Check size={13} className="text-green-500" /> : <Copy size={13} />}
+              {copied ? t("msg.codeCopied") : t("msg.codeCopy")}
+            </button>
+          </div>
+        </div>
+
+        {isPreviewable && activeTab === "preview" ? (
+          <div className="w-full h-[320px] bg-white overflow-hidden relative border-t border-zinc-200 dark:border-zinc-700">
+            <iframe
+              srcDoc={preparePreviewDoc(code, language)}
+              title="Inline Code Preview"
+              sandbox="allow-scripts allow-modals allow-forms allow-same-origin"
+              className="w-full h-full border-0 bg-white"
+            />
+          </div>
+        ) : (
+          <SyntaxHighlighter
+            language={language || "text"}
+            style={theme === "dark" ? oneDark : oneLight}
+            customStyle={{ margin: 0, borderRadius: 0, background: "transparent", fontSize: "13px", padding: "1rem" }}
+          >
+            {code}
+          </SyntaxHighlighter>
+        )}
+      </div>
+
+      {isPreviewable && (
+        <CodePreviewModal
+          open={modalOpen}
+          onClose={() => setModalOpen(false)}
+          code={code}
+          language={language}
+        />
+      )}
+    </>
   );
 }
 
@@ -394,7 +482,7 @@ function MessageEditor({ initialValue, onSubmit, onCancel }) {
   );
 }
 
-export default function MessageBubble({ message, isLast, onRegenerate, onFeedback, onEdit, onRetry, isStreaming }) {
+export default function MessageBubble({ message, isLast, onRegenerate, onFeedback, onEdit, onRetry, isStreaming, onFork }) {
   const [copied, setCopied] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState(null);
   const markdownRef = useRef(null);
@@ -419,16 +507,59 @@ export default function MessageBubble({ message, isLast, onRegenerate, onFeedbac
     }
   };
 
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const { lang } = useI18n();
+
+  useEffect(() => {
+    return () => {
+      if (isSpeaking && "speechSynthesis" in window) {
+        window.speechSynthesis.cancel();
+      }
+    };
+  }, [isSpeaking]);
+
+  const handleToggleSpeak = () => {
+    if (!("speechSynthesis" in window)) return;
+
+    if (isSpeaking) {
+      window.speechSynthesis.cancel();
+      setIsSpeaking(false);
+      return;
+    }
+
+    window.speechSynthesis.cancel();
+    const cleanText = (message.content || "")
+      .replace(/```[\s\S]*?```/g, " [Đoạn mã] ")
+      .replace(/`([^`]+)`/g, "$1")
+      .replace(/[*#_~\[\]()$]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+
+    if (!cleanText) return;
+
+    const utterance = new SpeechSynthesisUtterance(cleanText);
+    const isVietnamese = /[àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđ]/i.test(cleanText);
+    utterance.lang = isVietnamese ? "vi-VN" : lang === "ja" ? "ja-JP" : "en-US";
+    utterance.rate = 1.0;
+
+    utterance.onend = () => setIsSpeaking(false);
+    utterance.onerror = () => setIsSpeaking(false);
+
+    setIsSpeaking(true);
+    window.speechSynthesis.speak(utterance);
+  };
+
   const navLightbox = (delta) => {
     setLightboxIndex((i) => (i === null ? null : (i + delta + images.length) % images.length));
   };
 
   return (
     <motion.div
+      id={`msg-${message._id}`}
       initial={{ opacity: 0, y: 14 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
-      className={clsx("group flex gap-3 px-4 py-5", isUser ? "flex-row-reverse" : "flex-row")}
+      className={clsx("group flex gap-3 px-4 py-5 rounded-2xl transition-all", isUser ? "flex-row-reverse" : "flex-row")}
     >
       {isUser ? (
         <UserAvatar user={user} size={32} className="mt-0.5 shadow-glow" />
@@ -520,10 +651,37 @@ export default function MessageBubble({ message, isLast, onRegenerate, onFeedbac
         {!isUser && message.content && (
           <div className="chat-message-actions flex items-center gap-1 mt-1.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
             <Tooltip label={copied ? t("msg.copied") : t("msg.copy")}>
-<button onClick={handleCopy} aria-label={t("msg.copyAnswer")} className="p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/10">
-              {copied ? <Check size={14} className="text-ion-500" /> : <Copy size={14} className="opacity-60" />}
-            </button>
-</Tooltip>
+              <button onClick={handleCopy} aria-label={t("msg.copyAnswer")} className="p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/10">
+                {copied ? <Check size={14} className="text-ion-500" /> : <Copy size={14} className="opacity-60" />}
+              </button>
+            </Tooltip>
+            <Tooltip label={isSpeaking ? "Dừng đọc" : "Đọc to câu trả lời"}>
+              <button
+                type="button"
+                onClick={handleToggleSpeak}
+                aria-label="Đọc phản hồi bằng giọng nói"
+                className={clsx(
+                  "p-1.5 rounded-lg transition-colors",
+                  isSpeaking
+                    ? "text-brand-500 bg-brand-500/15"
+                    : "hover:bg-black/5 dark:hover:bg-white/10 opacity-60 hover:opacity-100"
+                )}
+              >
+                {isSpeaking ? <VolumeX size={14} /> : <Volume2 size={14} />}
+              </button>
+            </Tooltip>
+            {Boolean(onFork) && !isStreaming && (
+              <Tooltip label="Tách nhánh từ đây">
+                <button
+                  type="button"
+                  onClick={() => onFork(message)}
+                  aria-label="Tách nhánh cuộc trò chuyện từ đây"
+                  className="p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/10 opacity-60 hover:opacity-100 transition-colors"
+                >
+                  <GitFork size={14} />
+                </button>
+              </Tooltip>
+            )}
             {isLast && (
               <Tooltip label={t("msg.regenerate")}>
 <button onClick={onRegenerate} aria-label={t("msg.regenerate")} className="p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/10">

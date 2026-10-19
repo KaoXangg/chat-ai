@@ -98,4 +98,20 @@ export default {
   "export.you": "あなた",
   "export.ai": "AI",
   "export.attachedImages": "画像 {n} 枚を添付",
+
+  "chat.moreActions": "その他の操作",
+  "chat.shareTip": "会話を共有",
+  "chat.printTip": "印刷 / PDF出力",
+  "chat.themeToggle": "ライト/ダークテーマ切り替え",
+
+  "usage.tier": "プラン {tier}",
+  "usage.upgrade": "プランをアップグレード",
+  "usage.exhaustedBanner": "本日のトークン上限に達しました。アップグレードするかリセットをお待ちください。",
+  "usage.warningBanner": "トークン使用量が95%を超えました。上限に近づいています。",
+  "usage.seeAll": "すべて表示（{n}件のモデル）",
+  "usage.collapse": "折りたたむ",
+  "usage.retry": "再試行",
+  "usage.noteLimit": "上限はモデルごとに個別に計算され、毎日00:00にリセットされます。",
+  "usage.noteFallback": "モデルの上限に達した場合は、利用可能な別のモデルに自動で切り替わります。",
+  "usage.noteEst": "トークン数はAIプロバイダーから報告され、未報告の場合は推定値を使用します。",
 };

@@ -44,7 +44,15 @@ export function serializeChat(handler) {
       await withDatabaseLocks([userChatLock(req.user.id), conversationLock(id)], () => handler(req, res, next));
     } catch (err) {
       if (err.code === "CHAT_BUSY" && !res.headersSent) {
-        return res.status(409).json({ success: false, error: { code: err.code, message: err.message } });
+        res.setHeader("Retry-After", "3");
+        return res.status(409).json({
+          success: false,
+          error: {
+            code: err.code,
+            message: err.message,
+            details: { retryAfter: 3 },
+          },
+        });
       }
       next(err);
     }

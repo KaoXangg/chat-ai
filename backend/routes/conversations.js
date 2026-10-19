@@ -1,4 +1,5 @@
 import express from "express";
+import crypto from "node:crypto";
 import { Op, literal } from "sequelize";
 import Conversation from "../models/Conversation.js";
 import Message from "../models/Message.js";
@@ -35,6 +36,56 @@ router.get("/", async (req, res, next) => {
       ],
     });
     res.json({ success: true, data: { conversations } });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * GET /api/conversations/search-messages?q=...
+ * Tìm kiếm từ khóa sâu trong toàn bộ nội dung tin nhắn của người dùng.
+ */
+router.get("/search-messages", async (req, res, next) => {
+  try {
+    const q = typeof req.query.q === "string" ? req.query.q.trim() : "";
+    if (!q) {
+      return res.json({ success: true, data: { results: [] } });
+    }
+    if (q.length > 100) {
+      return res.status(400).json({ success: false, error: { code: "INVALID_QUERY", message: "Từ khóa tìm kiếm quá dài." } });
+    }
+
+    const conversations = await Conversation.findAll({
+      where: { userId: req.user.id },
+      attributes: ["id", "title"],
+    });
+    const convMap = new Map(conversations.map((c) => [c.id, c.title]));
+    const convIds = Array.from(convMap.keys());
+
+    if (!convIds.length) {
+      return res.json({ success: true, data: { results: [] } });
+    }
+
+    const messages = await Message.findAll({
+      where: {
+        conversationId: { [Op.in]: convIds },
+        content: { [Op.like]: `%${escapeLike(q)}%` },
+      },
+      attributes: ["id", "conversationId", "role", "content", "createdAt"],
+      order: [["createdAt", "DESC"]],
+      limit: 20,
+    });
+
+    const results = messages.map((m) => ({
+      messageId: String(m.id),
+      conversationId: String(m.conversationId),
+      conversationTitle: convMap.get(m.conversationId) || "Cuộc trò chuyện",
+      role: m.role,
+      contentSnippet: m.content.slice(0, 160),
+      createdAt: m.createdAt,
+    }));
+
+    res.json({ success: true, data: { results } });
   } catch (err) {
     next(err);
   }
@@ -109,7 +160,7 @@ router.get("/:id/messages/:messageId/images/:index", async (req, res, next) => {
 
 router.patch("/:id", serializeConversationMutation(async (req, res, next) => {
   try {
-    const { title, pinned, provider, model } = req.body;
+    const { title, pinned, provider, model, folderId } = req.body;
     validateConversationFields({ title, pinned, provider, model });
     const conversation = await Conversation.findOne({ where: { id: req.params.id, userId: req.user.id } });
     if (!conversation) {
@@ -120,9 +171,88 @@ router.patch("/:id", serializeConversationMutation(async (req, res, next) => {
     if (pinned !== undefined) conversation.pinned = Boolean(pinned);
     if (provider !== undefined) conversation.provider = provider;
     if (model !== undefined) conversation.model = model;
+    if (folderId !== undefined) conversation.folderId = folderId ? Number(folderId) : null;
 
     await conversation.save();
     res.json({ success: true, data: { conversation } });
+  } catch (err) {
+    next(err);
+  }
+}));
+
+/**
+ * POST /api/conversations/:id/fork
+ * Phân nhánh cuộc trò chuyện từ một tin nhắn cụ thể
+ */
+router.post("/:id/fork", serializeConversationMutation(async (req, res, next) => {
+  try {
+    const { messageId } = req.body;
+    if (!messageId) {
+      return res.status(400).json({ success: false, error: { code: "INVALID_INPUT", message: "Thiếu ID tin nhắn cần tách nhánh." } });
+    }
+
+    const originalConv = await Conversation.findOne({
+      where: { id: req.params.id, userId: req.user.id },
+    });
+    if (!originalConv) {
+      return res.status(404).json({ success: false, error: { code: "NOT_FOUND", message: "Không tìm thấy cuộc trò chuyện gốc." } });
+    }
+
+    const allMessages = await Message.findAll({
+      where: { conversationId: originalConv.id },
+      order: [["createdAt", "ASC"], ["id", "ASC"]],
+    });
+
+    const targetIdx = allMessages.findIndex((m) => String(m.id) === String(messageId));
+    if (targetIdx === -1) {
+      return res.status(404).json({ success: false, error: { code: "NOT_FOUND", message: "Không tìm thấy tin nhắn cần tách nhánh." } });
+    }
+
+    const messagesToCopy = allMessages.slice(0, targetIdx + 1);
+    const forkedTitle = originalConv.title.startsWith("Nhánh: ")
+      ? originalConv.title
+      : `Nhánh: ${originalConv.title}`;
+
+    let newConv;
+    await sequelize.transaction(async (transaction) => {
+      newConv = await Conversation.create(
+        {
+          userId: req.user.id,
+          title: forkedTitle.slice(0, 120),
+          provider: originalConv.provider,
+          model: originalConv.model,
+          systemPrompt: originalConv.systemPrompt,
+          folderId: originalConv.folderId,
+          personaId: originalConv.personaId,
+        },
+        { transaction }
+      );
+
+      for (const msg of messagesToCopy) {
+        await Message.create(
+          {
+            conversationId: newConv.id,
+            role: msg.role,
+            content: msg.content,
+            images: msg.images,
+            imageBase64: msg.imageBase64,
+            imageMimeType: msg.imageMimeType,
+            sources: msg.sources,
+            feedback: msg.feedback,
+            isError: msg.isError,
+          },
+          { transaction }
+        );
+      }
+    });
+
+    res.status(201).json({
+      success: true,
+      data: {
+        conversation: newConv,
+        messageCount: messagesToCopy.length,
+      },
+    });
   } catch (err) {
     next(err);
   }
@@ -143,5 +273,47 @@ router.delete("/:id", serializeConversationMutation(async (req, res, next) => {
     next(err);
   }
 }));
+
+router.get("/:id/share", async (req, res, next) => {
+  try {
+    const conversation = await Conversation.findOne({ where: { id: req.params.id, userId: req.user.id } });
+    if (!conversation) {
+      return res.status(404).json({ success: false, error: { code: "NOT_FOUND", message: "Không tìm thấy cuộc trò chuyện." } });
+    }
+    res.json({ success: true, data: { shareId: conversation.shareId || null } });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post("/:id/share", async (req, res, next) => {
+  try {
+    const conversation = await Conversation.findOne({ where: { id: req.params.id, userId: req.user.id } });
+    if (!conversation) {
+      return res.status(404).json({ success: false, error: { code: "NOT_FOUND", message: "Không tìm thấy cuộc trò chuyện." } });
+    }
+    if (!conversation.shareId) {
+      conversation.shareId = crypto.randomBytes(16).toString("base64url"); // 22 ký tự, <= 50
+      await conversation.save();
+    }
+    res.json({ success: true, data: { shareId: conversation.shareId } });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.delete("/:id/share", async (req, res, next) => {
+  try {
+    const conversation = await Conversation.findOne({ where: { id: req.params.id, userId: req.user.id } });
+    if (!conversation) {
+      return res.status(404).json({ success: false, error: { code: "NOT_FOUND", message: "Không tìm thấy cuộc trò chuyện." } });
+    }
+    conversation.shareId = null;
+    await conversation.save();
+    res.json({ success: true, data: { message: "Đã tắt chia sẻ liên kết." } });
+  } catch (err) {
+    next(err);
+  }
+});
 
 export default router;

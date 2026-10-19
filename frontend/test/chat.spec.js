@@ -137,6 +137,8 @@ test("desktop/mobile layout and light/dark theme survive the CSS upgrade", async
   await expect(send).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await page.screenshot({ path: testInfo.outputPath("mobile.png"), fullPage: true });
+  const moreBtn = page.getByRole("button", { name: /actions|more/i });
+  if (await moreBtn.isVisible()) await moreBtn.click();
   await page.getByRole("button", { name: /dark/i }).click();
   await expect(page.locator("html")).toHaveClass(/dark/);
   expect(errors).toEqual([]);

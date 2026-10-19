@@ -41,6 +41,12 @@ const User = sequelize.define(
     uiLanguage: { type: DataTypes.STRING(10), allowNull: true },
     // Ngôn ngữ AI trả lời: "auto" (theo tin nhắn của người dùng) hoặc một mã ngôn ngữ như "en", "ja".
     aiLanguage: { type: DataTypes.STRING(10), allowNull: false, defaultValue: "auto" },
+    // Chỉ dẫn tùy biến hệ thống / phong cách trả lời cho AI.
+    systemPrompt: { type: DataTypes.STRING(2000), allowNull: true },
+    // Hạn ngạch token riêng cho người dùng này (null = dùng mặc định, 0 = không giới hạn).
+    customDailyTokenLimit: { type: DataTypes.INTEGER, allowNull: true, defaultValue: null },
+    // Gói người dùng: "free", "pro", "vip"
+    userTier: { type: DataTypes.STRING(20), allowNull: false, defaultValue: "free" },
     // Virtual field de giu tuong thich voi frontend (dang dung `_id` kieu Mongo).
     _id: {
       type: DataTypes.VIRTUAL,

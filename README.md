@@ -27,10 +27,12 @@
 12. [Xác thực và bảo mật](#xác-thực-và-bảo-mật)
 13. [API](#api)
 14. [Build production](#build-production)
-15. [Xử lý sự cố](#xử-lý-sự-cố)
-16. [Hướng phát triển](#hướng-phát-triển)
-17. [Đóng góp](#đóng-góp)
-18. [Giấy phép](#giấy-phép)
+15. [Chạy bằng Docker](#chạy-bằng-docker)
+16. [Tích hợp liên tục (CI)](#tích-hợp-liên-tục-ci)
+17. [Xử lý sự cố](#xử-lý-sự-cố)
+18. [Hướng phát triển](#hướng-phát-triển)
+19. [Đóng góp](#đóng-góp)
+20. [Giấy phép](#giấy-phép)
 
 ## Tính năng
 
@@ -160,9 +162,9 @@ Mở SSMS, kết nối SQL Server và chạy:
 CREATE DATABASE chat_ai;
 ```
 
-Chọn database `chat_ai`, sau đó mở và thực thi (F5) file `backend/sql/schema.sql` để tạo cấu trúc bảng.
+Chọn database `chat_ai`, sau đó mở và thực thi (F5) file `backend/database/schema.sql` để tạo cấu trúc bảng.
 
-Backend tự bổ sung các cột và index tương thích khi khởi động, gồm `PasswordResets.attempts`, `Users.tokenVersion` và `Messages.requestId`. Tài khoản database cần quyền thay đổi schema cho bước này; có thể chạy `backend/sql/schema.sql` trước bằng tài khoản quản trị database.
+Backend tự bổ sung các cột và index tương thích khi khởi động, gồm `PasswordResets.attempts`, `Users.tokenVersion` và `Messages.requestId`. Tài khoản database cần quyền thay đổi schema cho bước này; có thể chạy `backend/database/schema.sql` trước bằng tài khoản quản trị database.
 
 ### 3. Chạy Backend
 
@@ -179,7 +181,7 @@ npm run seed              # Khởi tạo dữ liệu ban đầu (chạy lần đ
 npm run dev
 ```
 
-Sau khi seed lần đầu, chạy lại `backend/sql/schema.sql` trong SSMS để áp dụng hạn mức token cho danh sách model vừa tạo.
+Sau khi seed lần đầu, chạy lại `backend/database/schema.sql` trong SSMS để áp dụng hạn mức token cho danh sách model vừa tạo.
 
 API chạy tại `http://localhost:5000`, kiểm tra tại `http://localhost:5000/api/health`.
 
@@ -284,18 +286,41 @@ Khi một provider gặp lỗi hoặc hết hạn mức, bộ định tuyến s�
 
 ## Cơ sở dữ liệu
 
-Toàn bộ SQL nằm trong một file `backend/sql/schema.sql`: tạo database và bảng, bổ sung các cột còn thiếu trên DB cũ, tạo index và đặt hạn mức token. Chạy toàn bộ file bằng SSMS / sqlcmd. Các model chính (thư mục `backend/models/`):
+Hệ thống sử dụng Microsoft SQL Server (2019/2022/Azure SQL) với 12 bảng chuẩn hóa. Cấu trúc chi tiết và sơ đồ ERD được trình bày tại [docs/DATABASE.md](docs/DATABASE.md).
 
-| Model | Mô tả |
-|---|---|
-| `User` | Người dùng: mật khẩu băm bcrypt, vai trò, trạng thái khóa |
-| `Conversation` | Cuộc hội thoại: tiêu đề, trạng thái ghim, chủ sở hữu |
-| `Message` | Tin nhắn trong hội thoại: nội dung, vai trò (người dùng / AI), model sử dụng |
-| `AIModel` | Danh sách mô hình AI: provider, trạng thái bật/tắt, model mặc định |
+### Khởi tạo CSDL trên máy mới
 
-Quan hệ chính: `User` 1–N `Conversation`; `Conversation` 1–N `Message`.
+Để thiết lập cơ sở dữ liệu trên máy trạm hoặc máy chủ mới:
 
-Phần cuối script đặt hạn mức mỗi người dùng / model / ngày cho các model đang có `dailyTokenLimit = 0`: Gemini **100.000**, Groq **50.000**, OpenRouter **30.000**, provider khác **50.000** token. Hạn mức khác `0` được giữ nguyên. Vì `0` trong ứng dụng có nghĩa là không giới hạn, nếu muốn dùng không giới hạn hãy đặt lại `0` trong Admin sau khi chạy script. Script không tạo tài khoản admin hoặc danh sách model; với DB mới, chạy `npm run seed` rồi chạy lại script để áp dụng hạn mức cho model vừa tạo.
+1. **Cấu hình biến môi trường kết nối trong `backend/.env`**:
+   ```env
+   DB_HOST=localhost
+   DB_PORT=1433
+   DB_NAME=chat_ai
+   DB_USER=your_sql_user
+   DB_PASSWORD=your_sql_password
+   DB_ENCRYPT=false
+   DB_TRUST_SERVER_CERT=true
+   ```
+
+2. **Khởi tạo schema bảng và chỉ mục (Transact-SQL)**:
+   - Sử dụng **sqlcmd** (Command Prompt / PowerShell):
+     ```bash
+     sqlcmd -S localhost -U your_sql_user -P your_sql_password -C -i backend/database/schema.sql
+     ```
+   - Hoặc mở file [`backend/database/schema.sql`](backend/database/schema.sql) trong **SQL Server Management Studio (SSMS)** hoặc **Azure Data Studio** và nhấn **Execute (F5)**.
+   - *File mang tính lũy đẳng (idempotent), an toàn khi chạy lại nhiều lần và không làm mất dữ liệu cũ.*
+
+3. **Khởi tạo dữ liệu mẫu và tài khoản Quản trị viên (Admin)**:
+   - Khởi tạo SystemSettings và AI Models mặc định:
+     ```bash
+     sqlcmd -S localhost -U your_sql_user -P your_sql_password -C -i backend/database/seed.sql
+     ```
+   - Tạo tài khoản Admin an toàn theo mật khẩu trong `backend/.env`:
+     ```bash
+     cd backend
+     npm run seed
+     ```
 
 Gửi lại cùng `requestId` không tạo thêm câu hỏi hoặc tính lại token cho câu trả lời đã hoàn tất. Khóa ứng dụng SQL Server (`sp_getapplock`) tuần tự hóa chat theo người dùng và hội thoại, kể cả khi chạy nhiều backend; yêu cầu trùng lúc nhận `409 CHAT_BUSY`. Pool giữ khóa được tách khỏi pool truy vấn để các luồng streaming không chặn việc lưu dữ liệu. Mỗi lượt chat đang stream giữ 1 kết nối khóa; số luồng song song tối đa ≈ `CHAT_LOCK_POOL_MAX`.
 
@@ -375,6 +400,62 @@ npm run build
 ```
 
 Kết quả nằm trong `frontend/dist/`, thường không cần commit lên Git. Khi triển khai: đặt `NODE_ENV=production`, cập nhật `CLIENT_URL` đúng domain, dùng HTTPS và sao lưu database định kỳ.
+
+## Chạy bằng Docker
+
+Dự án cung cấp `docker-compose.yml` định nghĩa sẵn các dịch vụ cho môi trường dev/local:
+- `db`: Microsoft SQL Server 2022 (`mcr.microsoft.com/mssql/server:2022-latest`) kèm healthcheck `sqlcmd`.
+- `db-init`: Khởi tạo cơ sở dữ liệu `chat_ai` tự động (nếu chưa có, không làm mất dữ liệu cũ).
+- `backend`: Node.js Express API chạy dưới user phi root `node` và healthcheck `/health`.
+- `frontend`: Giao diện React build bằng Vite, phục vụ qua Nginx với cấu hình SPA fallback, nén Gzip và cache headers.
+
+### Khởi chạy
+
+```bash
+# 1. Tạo file cấu hình từ mẫu
+cp .env.docker.example .env.docker
+
+# 2. Khởi chạy toàn bộ hệ thống bằng Docker Compose
+docker compose --env-file .env.docker up --build -d
+```
+
+### Xem log
+
+```bash
+# Xem log tổng hợp của tất cả dịch vụ
+docker compose logs -f
+
+# Hoặc xem riêng từng dịch vụ
+docker compose logs -f backend
+docker compose logs -f db
+docker compose logs -f frontend
+```
+
+### Dừng và xóa dữ liệu (Reset DB)
+
+```bash
+# Dừng các container (giữ nguyên dữ liệu volume)
+docker compose down
+
+# Dừng và xóa sạch volume database (dữ liệu được khởi tạo lại từ đầu ở lần chạy sau)
+docker compose down -v
+```
+
+## Tích hợp liên tục (CI)
+
+Hệ thống CI tự động chạy thông qua GitHub Actions (`.github/workflows/ci.yml`) khi có `push` hoặc `pull_request` vào nhánh `main`:
+
+1. **Job `backend`**:
+   - Khởi tạo môi trường Node.js 22 LTS với cache npm.
+   - Chạy `npm test` với 60 test tự động (xác thực, mã hóa secret, rate limit, quota replay, distributed chat lock). Toàn bộ test sử dụng mock cách ly, không cần kết nối tới SQL Server ngoài.
+2. **Job `frontend`**:
+   - Khởi tạo Node.js 22, cài đặt Playwright Chromium và các dependency hệ điều hành.
+   - Chạy 17 test E2E Playwright trên bản build preview với mock API (`**/api/**`). Tự động tải lên artifact `playwright-report` nếu có test thất bại.
+3. **Job `docker-build`**:
+   - Chạy sau khi backend và frontend test đều vượt qua thành công.
+   - Thực hiện `docker build` kiểm tra tính hợp lệ của cả `backend/Dockerfile` và `frontend/Dockerfile` (không push lên registry).
+
+> ⚠️ Lưu ý: Script E2E hạn mức `backend/scripts/quota-e2e.js` yêu cầu máy chủ thực tế đang chạy và API key AI của nhà cung cấp, nên không đưa vào pipeline CI.
 
 ## Xử lý sự cố
 

@@ -13,7 +13,7 @@ process.env.JWT_SECRET = "chat-regression-test-secret";
 process.env.DB_NAME = "test";
 process.env.DB_USER = "test";
 process.env.CHAT_RATE_LIMIT_PER_MINUTE = "100";
-const { sequelize, User, Conversation, Message, AIModel, TokenUsage } = await import("../models/index.js");
+const { sequelize, User, Conversation, Message, AIModel, TokenUsage, SystemSetting } = await import("../models/index.js");
 const { chatLockDatabase } = await import("../config/db.js");
 const { GroqProvider } = await import("../providers/groqProvider.js");
 const { GeminiProvider } = await import("../providers/geminiProvider.js");
@@ -84,6 +84,8 @@ beforeEach(() => {
   mock.method(Conversation, "findOne", async ({ where }) => String(where.id) === "7" && where.userId === 1 ? conversation : null);
   mock.method(AIModel, "findAll", async () => [{ toJSON: () => model }]);
   mock.method(TokenUsage, "create", async (entry, options) => { usage.push({ ...entry, transaction: options?.transaction }); });
+  mock.method(TokenUsage, "findAll", async () => []);
+  mock.method(SystemSetting, "findByPk", async () => ({ toJSON: () => ({ allowRegistration: true, maintenanceMode: false, globalSystemPrompt: "", blockedKeywords: "" }) }));
   mock.method(Message, "findOne", async ({ where, order }) => {
     let found = rows.filter((row) => (!where.role || row.role === where.role)
       && (!where.requestId || row.requestId === where.requestId)
@@ -388,6 +390,26 @@ test("retrying the same send replays its answer without duplicate messages or bi
   assert.equal(usage.length, billCount);
   assert.equal(replay.find((event) => event.token).token, "Replacement");
   assert.ok(replay.at(-1).done);
+});
+
+test("retrying a send with existing answer replays even when quota is exhausted and user is busy", async () => {
+  const send = () => request("/chat/7/stream", { method: "POST", body: JSON.stringify({ content: "New question", requestId: "retry-quota-busy" }) });
+  assert.ok(events(await (await send()).text()).at(-1).done);
+
+  mock.method(TokenUsage, "findAll", async () => [
+    { sumTotal: 10_000_000, provider: "groq", modelId: "test-model" },
+  ]);
+  locks.set("chat:user:1", { resources: ["chat:user:1"] });
+
+  try {
+    const replayResponse = await send();
+    assert.equal(replayResponse.status, 200);
+    const replayEvents = events(await replayResponse.text());
+    assert.equal(replayEvents.find((event) => event.token).token, "Replacement");
+    assert.ok(replayEvents.at(-1).done);
+  } finally {
+    locks.delete("chat:user:1");
+  }
 });
 
 test("parallel chat, edit and model changes are rejected until the active request finishes", async () => {

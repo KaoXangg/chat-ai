@@ -17,6 +17,10 @@ const Conversation = sequelize.define(
     provider: { type: DataTypes.STRING(50), allowNull: false, defaultValue: "openrouter" },
     model: { type: DataTypes.STRING(150), allowNull: false, defaultValue: "openrouter/free" },
     pinned: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
+    systemPrompt: { type: DataTypes.STRING(2000), allowNull: true },
+    shareId: { type: DataTypes.STRING(50), allowNull: true },
+    folderId: { type: DataTypes.INTEGER, allowNull: true },
+    personaId: { type: DataTypes.INTEGER, allowNull: true },
     _id: {
       type: DataTypes.VIRTUAL,
       get() {
@@ -28,7 +32,10 @@ const Conversation = sequelize.define(
   {
     tableName: "Conversations",
     timestamps: true,
-    indexes: [{ fields: ["userId"] }],
+    indexes: [
+      { fields: ["userId"] },
+      { fields: ["userId", "createdAt"] },
+    ],
   }
 );
 

@@ -1,16 +1,22 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { Plus, Search, Pin, Pencil, Trash2, LogOut, ShieldCheck, X, Check, PanelLeftClose, PanelLeftOpen, SquarePen, MessageSquare, Dices, Loader2, ArrowUpRight } from "lucide-react";
+import { Plus, Search, Pin, Pencil, Trash2, LogOut, ShieldCheck, X, Check, PanelLeftClose, PanelLeftOpen, SquarePen, MessageSquare, Dices, Loader2, ArrowUpRight, Settings, Folder, FolderPlus, FolderInput, ChevronDown, ChevronRight, Download } from "lucide-react";
 import clsx from "clsx";
 import { useAuth } from "../context/AuthContext.jsx";
 import { useNavigate } from "react-router-dom";
+import api from "../api/axios.js";
 import BrandMark from "./BrandMark.jsx";
 import Tooltip from "./Tooltip.jsx";
 import UserAvatar from "./UserAvatar.jsx";
+import ProfileModal from "./ProfileModal.jsx";
+import FolderModal from "./FolderModal.jsx";
+import InstallAppModal from "./InstallAppModal.jsx";
+import SidebarQuota from "./SidebarQuota.jsx";
 import { useToast } from "../context/ToastContext.jsx";
 import { useI18n } from "../i18n/I18nContext.jsx";
 import { useModalA11y } from "../hooks/useModalA11y.js";
+import { usePWAInstall } from "../hooks/usePWAInstall.js";
 
 // Tiêu đề mặc định do server tạo (có/không dấu) -> hiển thị theo ngôn ngữ giao diện.
 const DEFAULT_TITLES = new Set(["Cuoc tro chuyen moi", "Cuộc trò chuyện mới"]);
@@ -45,7 +51,54 @@ function groupByDate(conversations) {
   return groups;
 }
 
-function ConversationRow({ conv, isActive, isEditing, editValue, onEditValueChange, onSelect, onStartEdit, onCommitEdit, onPin, onDelete }) {
+function MoveFolderMenu({ conv, folders, onClose, onMoveFolder, anchorRect }) {
+  const { t } = useI18n();
+  if (typeof document === "undefined" || !anchorRect) return null;
+  return createPortal(
+    <div className="fixed inset-0 z-50" onClick={onClose}>
+      <div
+        role="menu"
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          top: Math.min(window.innerHeight - 240, Math.max(10, anchorRect.bottom + 4)),
+          left: Math.min(window.innerWidth - 230, Math.max(10, anchorRect.left - 140)),
+        }}
+        className="fixed w-56 bg-white/95 dark:bg-neutral-900/95 backdrop-blur-xl border border-black/10 dark:border-white/10 rounded-2xl shadow-2xl p-1.5 text-xs space-y-1 z-50 animate-in fade-in zoom-in-95 duration-100"
+      >
+        <p className="px-2.5 pt-1 pb-1 font-semibold text-zinc-500 uppercase tracking-wider text-[10px]">
+          {t("folder.moveTo")}
+        </p>
+        <button
+          onClick={() => { onMoveFolder(conv._id, null); onClose(); }}
+          className={clsx(
+            "w-full text-start px-2.5 py-2 rounded-xl flex items-center gap-2 hover:bg-black/5 dark:hover:bg-white/5 transition-colors",
+            !conv.folderId && "font-semibold text-brand-600 dark:text-brand-400 bg-brand-500/10"
+          )}
+        >
+          <Folder size={14} className="opacity-50" />
+          <span className="truncate">{t("folder.none")}</span>
+        </button>
+
+        {folders.map((f) => (
+          <button
+            key={f.id}
+            onClick={() => { onMoveFolder(conv._id, f.id); onClose(); }}
+            className={clsx(
+              "w-full text-start px-2.5 py-2 rounded-xl flex items-center gap-2 hover:bg-black/5 dark:hover:bg-white/5 transition-colors",
+              String(conv.folderId) === String(f.id) && "font-semibold text-brand-600 dark:text-brand-400 bg-brand-500/10"
+            )}
+          >
+            <span className="w-2.5 h-2.5 rounded-full shrink-0 shadow-xs" style={{ backgroundColor: f.color || "#6366f1" }} />
+            <span className="truncate flex-1">{f.name}</span>
+          </button>
+        ))}
+      </div>
+    </div>,
+    document.body
+  );
+}
+
+function ConversationRow({ conv, isActive, isEditing, editValue, onEditValueChange, onSelect, onStartEdit, onCommitEdit, onPin, onDelete, onOpenMoveMenu }) {
   const { t } = useI18n();
   return (
     <motion.div
@@ -101,6 +154,18 @@ function ConversationRow({ conv, isActive, isEditing, editValue, onEditValueChan
           <button
             onClick={(e) => {
               e.stopPropagation();
+              onOpenMoveMenu?.(conv, e.currentTarget.getBoundingClientRect());
+            }}
+            aria-label={t("folder.moveTo")}
+            className="p-1 rounded hover:bg-black/10 dark:hover:bg-white/10 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
+            title={t("folder.moveTo")}
+          >
+            <FolderInput size={13} />
+          </button>
+
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
               onPin();
             }}
             aria-label={conv.pinned ? t("sidebar.unpin") : t("sidebar.pin")}
@@ -131,6 +196,94 @@ function ConversationRow({ conv, isActive, isEditing, editValue, onEditValueChan
         </div>
       )}
     </motion.div>
+  );
+}
+
+function FolderAccordionItem({
+  folder,
+  items,
+  isCollapsed,
+  onToggle,
+  onEdit,
+  onDelete,
+  activeId,
+  editingId,
+  editValue,
+  onEditValueChange,
+  onSelect,
+  onStartEdit,
+  onCommitEdit,
+  onPin,
+  onDeleteConv,
+  onOpenMoveMenu,
+}) {
+  const { t } = useI18n();
+  return (
+    <div className="rounded-xl overflow-hidden mb-1">
+      <div
+        onClick={onToggle}
+        className="group/folder flex items-center justify-between px-2.5 py-1.5 rounded-xl hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer text-xs font-medium text-zinc-700 dark:text-zinc-300 transition-colors"
+      >
+        <div className="flex items-center gap-2 min-w-0 flex-1">
+          <span className="shrink-0 text-zinc-400 group-hover/folder:text-zinc-600 dark:group-hover/folder:text-zinc-200">
+            {isCollapsed ? <ChevronRight size={13} /> : <ChevronDown size={13} />}
+          </span>
+          <span
+            className="w-2.5 h-2.5 rounded-full shrink-0 shadow-xs"
+            style={{ backgroundColor: folder.color || "#6366f1" }}
+          />
+          <span className="truncate font-semibold">{folder.name}</span>
+          <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-black/5 dark:bg-white/10 text-zinc-500 font-mono">
+            {items.length}
+          </span>
+        </div>
+
+        <div className="hidden group-hover/folder:flex items-center gap-0.5 shrink-0" onClick={(e) => e.stopPropagation()}>
+          <button
+            onClick={() => onEdit(folder)}
+            aria-label={t("folder.editFolder")}
+            className="p-1 rounded hover:bg-black/10 dark:hover:bg-white/10 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
+            title={t("folder.editFolder")}
+          >
+            <Pencil size={11} />
+          </button>
+          <button
+            onClick={() => onDelete(folder)}
+            aria-label={t("folder.deleteFolder")}
+            className="p-1 rounded hover:bg-red-500/10 text-zinc-400 hover:text-red-500"
+            title={t("folder.deleteFolder")}
+          >
+            <Trash2 size={11} />
+          </button>
+        </div>
+      </div>
+
+      {!isCollapsed && (
+        <div className="ps-2 pe-0.5 pt-0.5 pb-1 space-y-0.5 border-l-2 border-brand-500/20 dark:border-brand-500/30 ms-3 mt-0.5">
+          {items.length === 0 ? (
+            <p className="text-[11px] text-zinc-400 py-1 px-2 italic">{t("folder.empty")}</p>
+          ) : (
+
+            items.map((conv) => (
+              <ConversationRow
+                key={conv._id}
+                conv={conv}
+                isActive={activeId === conv._id}
+                isEditing={editingId === conv._id}
+                editValue={editValue}
+                onEditValueChange={onEditValueChange}
+                onSelect={() => onSelect(conv._id)}
+                onStartEdit={() => onStartEdit(conv)}
+                onCommitEdit={onCommitEdit}
+                onPin={() => onPin(conv._id, !conv.pinned)}
+                onDelete={() => onDeleteConv(conv._id)}
+                onOpenMoveMenu={onOpenMoveMenu}
+              />
+            ))
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -232,6 +385,7 @@ export default function Sidebar({
   onRename,
   onPin,
   onDelete,
+  onRefreshConversations,
   isOpen,
   onCloseMobile,
   collapsed = false,
@@ -242,11 +396,62 @@ export default function Sidebar({
   const { t, errorMessage } = useI18n();
   const toast = useToast();
   const navigate = useNavigate();
+  const [profileOpen, setProfileOpen] = useState(false);
   const [avatarBusy, setAvatarBusy] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [editValue, setEditValue] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [messageResults, setMessageResults] = useState([]);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const searchTimerRef = useRef(null);
   const [isMobile, setIsMobile] = useState(() => window.matchMedia("(max-width: 767px)").matches);
   const drawerRef = useModalA11y(isOpen && isMobile, onCloseMobile);
+
+  // Quản lý Thư mục Chat
+  const [folders, setFolders] = useState([]);
+  const [folderModalOpen, setFolderModalOpen] = useState(false);
+  const [editingFolder, setEditingFolder] = useState(null);
+  const [collapsedFolders, setCollapsedFolders] = useState(() => new Set());
+  const [moveMenuState, setMoveMenuState] = useState(null);
+
+  const loadFolders = async () => {
+    try {
+      const res = await api.get("/folders");
+      if (res.data.success) {
+        setFolders(res.data.data.folders || []);
+      }
+    } catch {
+      // Ignored
+    }
+  };
+
+  useEffect(() => {
+    loadFolders();
+  }, []);
+
+  const handleMoveFolder = async (convId, folderId) => {
+    try {
+      await api.patch(`/conversations/${convId}`, { folderId });
+      toast.success(folderId ? t("folder.movedIn") : t("folder.movedOut"));
+      await loadFolders();
+      onRefreshConversations?.();
+    } catch {
+      toast.error(errorMessage("Không thể chuyển thư mục."));
+    }
+  };
+
+  const handleDeleteFolder = async (folder) => {
+    if (!window.confirm(t("folder.deleteConfirm", { name: folder.name }).replace("{name}", folder.name))) return;
+    try {
+      await api.delete(`/folders/${folder.id}`);
+      toast.success(t("folder.deleteFolder"));
+      await loadFolders();
+      onRefreshConversations?.();
+    } catch {
+      toast.error(errorMessage("Không thể xóa thư mục."));
+    }
+  };
+
 
   useEffect(() => {
     const media = window.matchMedia("(max-width: 767px)");
@@ -257,6 +462,20 @@ export default function Sidebar({
 
   // Popover của thanh icon thu gọn (đã ghim / gần đây)
   const [flyout, setFlyout] = useState(null);
+  const { canInstall, isInstalled, isIOS, promptInstall } = usePWAInstall();
+  const [installModalOpen, setInstallModalOpen] = useState(false);
+
+  const handleInstallClick = async (e) => {
+    e?.stopPropagation?.();
+    if (isIOS) {
+      setInstallModalOpen(true);
+      return;
+    }
+    const res = await promptInstall();
+    if (res === "unavailable" || res === "ios_guide") {
+      setInstallModalOpen(true);
+    }
+  };
   const closeTimer = useRef(null);
   const isFlyoutOpen = flyout !== null;
   const cancelClose = () => clearTimeout(closeTimer.current);
@@ -290,7 +509,11 @@ export default function Sidebar({
     };
   }, [isFlyoutOpen]);
 
-  const groups = useMemo(() => groupByDate(conversations), [conversations]);
+  const unfolderedConversations = useMemo(
+    () => conversations.filter((c) => !c.folderId),
+    [conversations]
+  );
+  const groups = useMemo(() => groupByDate(unfolderedConversations), [unfolderedConversations]);
 
   const startEdit = (conv) => {
     setEditingId(conv._id);
@@ -387,21 +610,160 @@ export default function Sidebar({
         </div>
 
         <div className="px-3 mt-3">
-          <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-black/5 dark:bg-white/5 border border-transparent focus-within:border-brand-400/60 transition-colors">
-            <Search size={14} className="opacity-50" />
+          <div className="sidebar-search-box flex items-center gap-2 px-3 py-2 rounded-xl bg-black/5 dark:bg-white/5 border border-zinc-200/60 dark:border-zinc-800/80 focus-within:border-brand-500/80 focus-within:ring-2 focus-within:ring-brand-500/20 focus-within:bg-white dark:focus-within:bg-zinc-900 transition-all shadow-xs">
+            <Search size={14} className="text-zinc-400 shrink-0" />
             <label htmlFor="sidebar-search" className="sr-only">
               {t("sidebar.searchLabel")}
             </label>
             <input
               id="sidebar-search"
-              onChange={(e) => onSearch(e.target.value)}
+              value={searchQuery}
+              onChange={(e) => {
+                const val = e.target.value;
+                setSearchQuery(val);
+                onSearch(val);
+                if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+                if (val.trim().length >= 2) {
+                  setSearchLoading(true);
+                  searchTimerRef.current = setTimeout(async () => {
+                    try {
+                      const res = await api.get("/conversations/search-messages", { params: { q: val.trim() } });
+                      if (res.data.success) {
+                        setMessageResults(res.data.data.results || []);
+                      }
+                    } catch {
+                      setMessageResults([]);
+                    } finally {
+                      setSearchLoading(false);
+                    }
+                  }, 300);
+                } else {
+                  setMessageResults([]);
+                  setSearchLoading(false);
+                }
+              }}
               placeholder={t("sidebar.searchPlaceholder")}
-              className="bg-transparent outline-hidden text-sm flex-1 min-w-0 placeholder:text-black/40 dark:placeholder:text-white/40"
+              className="bg-transparent border-0 outline-none text-sm flex-1 min-w-0 placeholder:text-zinc-400 dark:placeholder:text-zinc-500 text-zinc-800 dark:text-zinc-200 focus:outline-none focus:ring-0"
             />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSearchQuery("");
+                  onSearch("");
+                  setMessageResults([]);
+                }}
+                className="p-0.5 rounded-md hover:bg-black/10 dark:hover:bg-white/10 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 transition-colors"
+                title={t("folder.clearSearch")}
+              >
+                <X size={13} />
+              </button>
+            )}
+            {searchLoading && <Loader2 size={13} className="animate-spin text-brand-500 shrink-0" />}
           </div>
         </div>
 
         <div className="flex-1 min-h-0 overflow-y-auto mt-3 px-2 space-y-3">
+          {/* Kết quả tin nhắn khớp từ khóa */}
+          {messageResults.length > 0 && (
+            <div className="pb-2 mb-2 border-b border-edge-light dark:border-edge-dark">
+              <p className="px-3 mb-1 text-[11px] font-semibold uppercase tracking-wide text-brand-600 dark:text-brand-400">
+                {t("folder.messageResults")} ({messageResults.length})
+              </p>
+              <div className="space-y-1">
+                {messageResults.map((res) => (
+                  <button
+                    key={res.messageId}
+                    onClick={() => {
+                      onSelect(res.conversationId, res.messageId);
+                      if (isMobile) onCloseMobile();
+                    }}
+                    className="w-full text-start p-2 rounded-xl hover:bg-black/5 dark:hover:bg-white/5 transition-colors space-y-0.5 group"
+                  >
+                    <div className="flex items-center gap-1.5 text-xs font-medium text-brand-600 dark:text-brand-400 truncate">
+                      <MessageSquare size={12} className="shrink-0 opacity-70" />
+                      <span className="truncate">{res.conversationTitle}</span>
+                    </div>
+                    <p className="text-[12px] text-zinc-600 dark:text-zinc-400 line-clamp-2 leading-snug">
+                      {res.contentSnippet}
+                    </p>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Danh sách Thư mục */}
+          {folders.length > 0 && (
+            <div className="pb-2 mb-2 border-b border-edge-light dark:border-edge-dark">
+              <div className="flex items-center justify-between px-3 mb-1.5">
+                <span className="text-[11px] font-semibold uppercase tracking-wide opacity-50 flex items-center gap-1.5">
+                  <Folder size={12} />
+                  <span>{t("folder.title")} ({folders.length})</span>
+                </span>
+                <button
+                  onClick={() => { setEditingFolder(null); setFolderModalOpen(true); }}
+                  aria-label={t("folder.newFolder")}
+                  className="p-1 rounded-md hover:bg-black/5 dark:hover:bg-white/10 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 transition-colors"
+                  title={t("folder.newFolder")}
+                >
+                  <FolderPlus size={13} />
+                </button>
+              </div>
+
+              <div className="space-y-0.5">
+                {folders.map((folder) => {
+                  const folderConvs = conversations.filter((c) => String(c.folderId) === String(folder.id));
+                  const isCollapsed = collapsedFolders.has(folder.id);
+                  return (
+                    <FolderAccordionItem
+                      key={folder.id}
+                      folder={folder}
+                      items={folderConvs}
+                      isCollapsed={isCollapsed}
+                      onToggle={() => {
+                        setCollapsedFolders((prev) => {
+                          const next = new Set(prev);
+                          if (next.has(folder.id)) next.delete(folder.id);
+                          else next.add(folder.id);
+                          return next;
+                        });
+                      }}
+                      onEdit={(f) => { setEditingFolder(f); setFolderModalOpen(true); }}
+                      onDelete={handleDeleteFolder}
+                      activeId={activeId}
+                      editingId={editingId}
+                      editValue={editValue}
+                      onEditValueChange={setEditValue}
+                      onSelect={(id) => onSelect(id)}
+                      onStartEdit={startEdit}
+                      onCommitEdit={commitEdit}
+                      onPin={(id, p) => onPin(id, p)}
+                      onDeleteConv={onDelete}
+                      onOpenMoveMenu={(conv, rect) => setMoveMenuState({ conv, anchorRect: rect })}
+                    />
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Nút tạo thư mục đầu tiên nếu chưa có thư mục nào */}
+          {folders.length === 0 && (
+            <div className="px-3 pb-1">
+              <button
+                onClick={() => { setEditingFolder(null); setFolderModalOpen(true); }}
+                className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl border border-dashed border-edge-light dark:border-edge-dark text-xs text-zinc-500 hover:text-brand-600 dark:hover:text-brand-400 hover:border-brand-500/30 transition-colors"
+              >
+                <span className="flex items-center gap-1.5">
+                  <FolderPlus size={13} />
+                  <span>Tạo thư mục mới</span>
+                </span>
+                <Plus size={12} />
+              </button>
+            </div>
+          )}
+
           {groups.map((group) => (
             <div key={group.key}>
               <p className="px-3 mb-1 text-[11px] font-semibold uppercase tracking-wide opacity-40">{t(group.key)}</p>
@@ -420,13 +782,16 @@ export default function Sidebar({
                       onCommitEdit={commitEdit}
                       onPin={() => onPin(conv._id, !conv.pinned)}
                       onDelete={() => onDelete(conv._id)}
+                      onOpenMoveMenu={(conv, rect) => setMoveMenuState({ conv, anchorRect: rect })}
                     />
                   ))}
                 </AnimatePresence>
               </div>
             </div>
           ))}
-          {conversations.length === 0 && <p className="text-center text-xs opacity-40 py-6">{t("sidebar.empty")}</p>}
+          {conversations.length === 0 && messageResults.length === 0 && (
+            <p className="text-center text-xs opacity-40 py-6">{t("sidebar.empty")}</p>
+          )}
         </div>
 
         <div className="chat-sidebar-footer p-3 shrink-0 border-t border-edge-light dark:border-edge-dark space-y-2">
@@ -443,18 +808,47 @@ export default function Sidebar({
               <ArrowUpRight size={17} className="workspace-route-arrow" aria-hidden="true" />
             </button>
           )}
-          <div className="flex items-center gap-2 px-3 py-2">
-            <Tooltip label={t("sidebar.avatarTip")} side="top" align="start">
-              <span className="relative inline-flex">
-                <UserAvatar user={user} size={32} onClick={handleRandomAvatar} title={t("sidebar.avatarRandom")} />
+
+          {canInstall && (
+            <button
+              type="button"
+              onClick={handleInstallClick}
+              className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-brand-600 dark:text-brand-300 bg-brand-500/10 hover:bg-brand-500/15 border border-brand-500/20 transition-all shadow-xs"
+            >
+              <Download size={15} className="shrink-0 text-brand-600 dark:text-brand-400" />
+              <span className="flex-1 text-start">Cài đặt ứng dụng Chat AI</span>
+            </button>
+          )}
+          <SidebarQuota />
+          <div className="flex items-center gap-1.5 px-3 py-2">
+            <Tooltip label={t("profile.title")} side="top" align="start">
+              <button
+                onClick={() => setProfileOpen(true)}
+                className="relative inline-flex rounded-full focus:outline-none focus:ring-2 focus:ring-ion-500/50"
+              >
+                <UserAvatar user={user} size={32} />
                 {avatarBusy && (
                   <span className="absolute inset-0 rounded-full bg-black/40 flex items-center justify-center">
                     <Loader2 size={14} className="text-white animate-spin" />
                   </span>
                 )}
-              </span>
+              </button>
             </Tooltip>
-            <span className="text-sm truncate flex-1">{user?.username}</span>
+            <button
+              onClick={() => setProfileOpen(true)}
+              className="text-sm truncate flex-1 text-start font-medium text-zinc-800 dark:text-zinc-200 hover:text-ion-600 dark:hover:text-ion-400 transition-colors"
+            >
+              {user?.username}
+            </button>
+            <Tooltip label={t("profile.title")} side="top">
+              <button
+                onClick={() => setProfileOpen(true)}
+                aria-label={t("profile.title")}
+                className="p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/10 text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200 transition-colors"
+              >
+                <Settings size={15} />
+              </button>
+            </Tooltip>
             <Tooltip label={t("sidebar.avatarRandom")} side="top">
               <button
                 onClick={handleRandomAvatar}
@@ -466,10 +860,10 @@ export default function Sidebar({
               </button>
             </Tooltip>
             <Tooltip label={t("sidebar.logout")} side="top">
-<button onClick={logout} aria-label={t("sidebar.logout")} className="p-1.5 rounded-lg hover:bg-red-500/10 text-red-500 transition-colors">
-              <LogOut size={15} />
-            </button>
-</Tooltip>
+              <button onClick={logout} aria-label={t("sidebar.logout")} className="p-1.5 rounded-lg hover:bg-red-500/10 text-red-500 transition-colors">
+                <LogOut size={15} />
+              </button>
+            </Tooltip>
           </div>
         </div>
         </div>
@@ -549,16 +943,39 @@ export default function Sidebar({
             <MessageSquare size={18} />
           </button>
 
-          <Tooltip label={user?.username ? t("sidebar.accountTip", { name: user.username }) : t("sidebar.account")} side="right" className="mt-auto inline-flex">
+          {canInstall && (
+            <RailButton
+              label="Cài đặt ứng dụng"
+              onClick={handleInstallClick}
+              className="w-10 h-10 rounded-xl flex items-center justify-center text-brand-600 dark:text-brand-400 bg-brand-500/10 hover:bg-brand-500/20 transition-colors"
+            >
+              <Download size={18} />
+            </RailButton>
+          )}
+
+          <SidebarQuota collapsed />
+          <RailButton
+            label={t("profile.title")}
+            wrapperClassName="mt-auto"
+            onClick={(e) => {
+              e.stopPropagation();
+              setProfileOpen(true);
+            }}
+            className="w-10 h-10 rounded-xl flex items-center justify-center hover:bg-black/5 dark:hover:bg-white/10 text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200 transition-colors"
+          >
+            <Settings size={18} />
+          </RailButton>
+
+          <Tooltip label={user?.username ? t("sidebar.accountTip", { name: user.username }) : t("sidebar.account")} side="right" className="inline-flex">
             <span className="relative inline-flex">
               <UserAvatar
                 user={user}
                 size={36}
                 onClick={(e) => {
                   e.stopPropagation();
-                  handleRandomAvatar(e);
+                  setProfileOpen(true);
                 }}
-                title={t("sidebar.avatarRandom")}
+                title={t("profile.title")}
               />
               {avatarBusy && (
                 <span className="absolute inset-0 rounded-full bg-black/40 flex items-center justify-center pointer-events-none">
@@ -585,6 +1002,32 @@ export default function Sidebar({
         onEnter={cancelClose}
         onLeave={scheduleClose}
       />
+
+      <InstallAppModal
+        open={installModalOpen}
+        onClose={() => setInstallModalOpen(false)}
+        isIOS={isIOS}
+        onInstallNow={promptInstall}
+      />
+      <ProfileModal open={profileOpen} onClose={() => setProfileOpen(false)} />
+      <FolderModal
+        open={folderModalOpen}
+        folder={editingFolder}
+        onClose={() => { setFolderModalOpen(false); setEditingFolder(null); }}
+        onSaved={async () => {
+          await loadFolders();
+          onRefreshConversations?.();
+        }}
+      />
+      {moveMenuState && (
+        <MoveFolderMenu
+          conv={moveMenuState.conv}
+          folders={folders}
+          anchorRect={moveMenuState.anchorRect}
+          onClose={() => setMoveMenuState(null)}
+          onMoveFolder={handleMoveFolder}
+        />
+      )}
     </>
   );
 }

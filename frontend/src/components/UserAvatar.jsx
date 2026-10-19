@@ -15,15 +15,25 @@ export default function UserAvatar({ user, size = 32, className, onClick, title 
     setFailed(false);
   }, [user?.avatar]);
 
+  const Comp = onClick ? "button" : "span";
+  const btnProps = onClick
+    ? {
+        type: "button",
+        onClick,
+        disabled: false,
+        title,
+        "aria-label": title || (user?.username ? `Avatar ${user.username}` : "Avatar"),
+      }
+    : {
+        title,
+        "aria-label": title || (user?.username ? `Avatar ${user.username}` : "Avatar"),
+      };
+
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={!onClick}
-      title={title}
-      aria-label={title || (user?.username ? `Avatar ${user.username}` : "Avatar")}
+    <Comp
+      {...btnProps}
       className={clsx(
-        "relative shrink-0 rounded-full overflow-hidden flex items-center justify-center",
+        "relative shrink-0 rounded-full overflow-hidden flex items-center justify-center select-none",
         "bg-linear-to-br from-ion-400 to-ion-600 text-white font-semibold shadow-glow-ion",
         onClick && "cursor-pointer hover:ring-2 hover:ring-brand-400/50 transition-shadow",
         !onClick && "cursor-default",
@@ -44,6 +54,6 @@ export default function UserAvatar({ user, size = 32, className, onClick, title 
       ) : (
         <span>{letter}</span>
       )}
-    </button>
+    </Comp>
   );
 }

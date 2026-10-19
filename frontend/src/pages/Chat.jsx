@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from "react";
-import { Menu, ArrowDown, ArrowUpRight, Download, Gauge } from "lucide-react";
+import { Link } from "react-router-dom";
+import { Menu, ArrowDown, ArrowUpRight, Download, Gauge, Share2, Printer, Bot, AlertTriangle, ShieldAlert, MoreHorizontal } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import clsx from "clsx";
 import api from "../api/axios.js";
@@ -11,7 +12,13 @@ import BrandMark from "../components/BrandMark.jsx";
 import Tooltip from "../components/Tooltip.jsx";
 import ThemeToggle from "../components/ThemeToggle.jsx";
 import UsageModal, { usageTone, TEXT_TONE } from "../components/UsageModal.jsx";
+import ShareModal from "../components/ShareModal.jsx";
+import PersonasModal from "../components/PersonasModal.jsx";
+import AnnouncementBanner from "../components/AnnouncementBanner.jsx";
+import MobileActionsSheet from "../components/MobileActionsSheet.jsx";
+import { getLocalizedPersona } from "../utils/personaHelper.js";
 import { useChatStream } from "../hooks/useChatStream.js";
+
 import { useAuth } from "../context/AuthContext.jsx";
 import { useToast } from "../context/ToastContext.jsx";
 import { useI18n } from "../i18n/I18nContext.jsx";
@@ -42,8 +49,14 @@ export default function Chat() {
   const [messagesLoading, setMessagesLoading] = useState(false);
   const [usage, setUsage] = useState(null); // mức sử dụng token hôm nay (GET /usage)
   const [usageOpen, setUsageOpen] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
+  const [personasOpen, setPersonasOpen] = useState(false);
+  const [actionsSheetOpen, setActionsSheetOpen] = useState(false);
+  const [activePersona, setActivePersona] = useState(null);
+  const [targetMessageId, setTargetMessageId] = useState(null);
   const [usageLoading, setUsageLoading] = useState(false);
   const [usageError, setUsageError] = useState(null);
+  const [restoredText, setRestoredText] = useState("");
   const scrollRef = useRef(null);
   const stickToBottomRef = useRef(true);
   const [showScrollBtn, setShowScrollBtn] = useState(false);
@@ -136,6 +149,10 @@ export default function Chat() {
     loadModels();
     loadConversations();
     loadUsage();
+
+    const onQuotaUpdate = () => loadUsage();
+    window.addEventListener("quota-updated", onQuotaUpdate);
+    return () => window.removeEventListener("quota-updated", onQuotaUpdate);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -180,6 +197,23 @@ export default function Chat() {
   useEffect(() => {
     stickToBottomRef.current = true;
   }, [activeId]);
+
+  // Cuộn và highlight tin nhắn khi chọn từ kết quả tìm kiếm sâu
+  useEffect(() => {
+    if (!targetMessageId || messagesLoading || messages.length === 0) return;
+    const timer = setTimeout(() => {
+      const el = document.getElementById(`msg-${targetMessageId}`);
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
+        el.classList.add("ring-2", "ring-brand-500", "ring-offset-4", "dark:ring-offset-zinc-900");
+        setTimeout(() => {
+          el.classList.remove("ring-2", "ring-brand-500", "ring-offset-4", "dark:ring-offset-zinc-900");
+          setTargetMessageId(null);
+        }, 2200);
+      }
+    }, 200);
+    return () => clearTimeout(timer);
+  }, [targetMessageId, messages, messagesLoading]);
 
   useEffect(() => {
     const el = scrollRef.current;
@@ -261,9 +295,37 @@ export default function Chat() {
     toast.success(t("chat.exported"));
   };
 
+  const handleForkChat = async (message) => {
+    if (!activeId || !message?._id) return;
+    try {
+      const res = await api.post(`/conversations/${activeId}/fork`, {
+        messageId: message._id,
+      });
+      if (res.data.success) {
+        toast.success(`Đã tách nhánh cuộc trò chuyện mới (${res.data.data.messageCount} tin nhắn)!`);
+        await loadConversations();
+        const forkedId = String(res.data.data.conversation.id || res.data.data.conversation._id);
+        setActiveId(forkedId);
+      }
+    } catch {
+      toast.error("Không thể tách nhánh cuộc trò chuyện.");
+    }
+  };
+
+  const handleSelectPersona = (persona) => {
+    setActivePersona(persona);
+    setActiveId(null);
+    setMessages([]);
+    toast.success(`Đã chọn trợ lý: ${persona.name}`);
+  };
+
   const ensureConversation = async () => {
     if (activeId) return activeId;
-    const res = await api.post("/conversations", draftModel);
+    const payload = {
+      ...draftModel,
+      ...(activePersona ? { systemPrompt: activePersona.systemPrompt, personaId: activePersona.id } : {}),
+    };
+    const res = await api.post("/conversations", payload);
     const conv = res.data.data.conversation;
     skipNextMessageLoadRef.current.add(conv._id);
     setConversations((prev) => [conv, ...prev]);
@@ -343,6 +405,7 @@ export default function Chat() {
     if (sendLockRef.current || isStreaming || messagesLoading) return;
     sendLockRef.current = true;
     setIsSubmitting(true);
+    setRestoredText("");
     messageLoadVersionRef.current += 1;
 
     const { images } = options;
@@ -362,9 +425,22 @@ export default function Chat() {
 
     try {
       const convId = await ensureConversation();
-      await sendMessage(convId, content, retryOptions, buildHandlers(assistantKey, { conversationId: convId, userKey, onPreStreamError: async (message, code) => {
-        if (code === "REQUEST_ALREADY_PROCESSED") { await refreshMessages(convId); toast.error(message); }
-        else showSendError(message, code);
+      await sendMessage(convId, content, retryOptions, buildHandlers(assistantKey, { conversationId: convId, userKey, onPreStreamError: async (message, code, metadata = {}) => {
+        if (code === "REQUEST_ALREADY_PROCESSED") {
+          await refreshMessages(convId);
+          toast.error(message);
+        } else if (code === "QUOTA_EXCEEDED") {
+          setMessages((prev) => prev.filter((m) => m.clientKey !== userKey && m.clientKey !== assistantKey));
+          setRestoredText(content);
+          loadUsage();
+          window.dispatchEvent(new Event("quota-updated"));
+          toast.warning(message || "Đã hết hạn mức hôm nay. Vui lòng nâng cấp hoặc đợi đặt lại.");
+        } else if (code === "RATE_LIMITED") {
+          const retrySec = metadata?.retryAfter ? ` (thử lại sau ${metadata.retryAfter}s)` : "";
+          showSendError((message || "Hệ thống đang bận") + retrySec, code);
+        } else {
+          showSendError(message, code);
+        }
       } }));
     } catch (err) {
       showSendError(errorMessage(err, "error.CONVERSATION_FAILED"), "CONVERSATION_FAILED");
@@ -389,7 +465,23 @@ export default function Chat() {
     });
 
     try {
-      await regenerate(activeId, buildHandlers(assistantKey, { conversationId: activeId, replacedClientKey }));
+      await regenerate(activeId, buildHandlers(assistantKey, {
+        conversationId: activeId,
+        replacedClientKey,
+        onPreStreamError: async (message, code, metadata = {}) => {
+          if (code === "QUOTA_EXCEEDED") {
+            setMessages((prev) => prev.filter((m) => m.clientKey !== assistantKey));
+            loadUsage();
+            window.dispatchEvent(new Event("quota-updated"));
+            toast.warning(message || "Đã hết hạn mức hôm nay. Vui lòng nâng cấp hoặc đợi đặt lại.");
+          } else if (code === "RATE_LIMITED") {
+            const retrySec = metadata?.retryAfter ? ` (thử lại sau ${metadata.retryAfter}s)` : "";
+            patchMessage(assistantKey, () => ({ error: { message: (message || "Hệ thống đang bận") + retrySec, code, retry: "regenerate" } }));
+          } else {
+            patchMessage(assistantKey, () => ({ error: { message, code, retry: "regenerate" } }));
+          }
+        },
+      }));
     } catch (err) {
       toast.error(errorMessage(err, "chat.err.regenerate"));
     } finally {
@@ -420,7 +512,15 @@ export default function Chat() {
     const conversationId = activeId;
     const editVersion = messageLoadVersionRef.current;
     // A network failure can lose the acknowledgement after the edit has committed.
-    const restore = async (message, _code, { uncertain } = {}) => {
+    const restore = async (message, code, { uncertain, ...metadata } = {}) => {
+      if (code === "QUOTA_EXCEEDED") {
+        setMessages(snapshot);
+        setRestoredText(text);
+        loadUsage();
+        window.dispatchEvent(new Event("quota-updated"));
+        toast.warning(message || "Đã hết hạn mức hôm nay. Vui lòng nâng cấp hoặc đợi đặt lại.");
+        return;
+      }
       if (uncertain) {
         try {
           const res = await api.get(`/conversations/${conversationId}/messages`);
@@ -533,8 +633,11 @@ export default function Chat() {
       <Sidebar
         conversations={conversations}
         activeId={activeId}
-        onSelect={(id) => {
+        onSelect={(id, messageId) => {
           if (sendLockRef.current && !activeIdRef.current) return;
+          if (messageId) {
+            setTargetMessageId(messageId);
+          }
           if (activeIdRef.current !== id) {
             activeIdRef.current = id;
             messageLoadVersionRef.current += 1;
@@ -549,6 +652,7 @@ export default function Chat() {
         onRename={handleRename}
         onPin={handlePin}
         onDelete={handleDelete}
+        onRefreshConversations={loadConversations}
         isOpen={sidebarOpen}
         onCloseMobile={() => setSidebarOpen(false)}
         collapsed={desktopCollapsed}
@@ -556,19 +660,123 @@ export default function Chat() {
         onExpand={() => setDesktopCollapsed(false)}
       />
 
-      <div className="flex-1 flex flex-col min-w-0 min-h-0 relative z-10" inert={sidebarOpen && !isDesktop() ? "" : undefined}>
-        <header className="chat-header relative z-30 flex items-center justify-between border-b">
-          <button
-            onClick={() => setSidebarOpen(true)}
-            aria-label={t("chat.openSidebar")}
-            aria-expanded={sidebarOpen}
-            aria-controls="chat-navigation"
-            className="workspace-icon-button md:hidden"
-          >
-            <Menu size={20} />
-          </button>
+      <div className="flex-1 flex flex-col min-w-0 min-h-0 relative z-10 overflow-x-hidden" inert={sidebarOpen && !isDesktop() ? "" : undefined}>
+        {/* Mobile Header (< md): Nền đặc, 2 hàng, không blur, chuẩn WCAG AA */}
+        <header className="md:hidden flex flex-col bg-white dark:bg-[#12121a] border-b border-zinc-200 dark:border-zinc-800 px-3 pt-[max(8px,env(safe-area-inset-top))] pb-2.5 shrink-0 z-30 transition-colors">
+          {/* Hàng 1: Nút Menu | Tiêu đề đoạn chat (truncate) | Chip Quota | Nút ⋯ */}
+          <div className="flex items-center justify-between gap-2 h-10">
+            <button
+              type="button"
+              onClick={() => setSidebarOpen(true)}
+              aria-label={t("chat.openSidebar")}
+              aria-expanded={sidebarOpen}
+              aria-controls="chat-navigation"
+              className="w-10 h-10 rounded-xl flex items-center justify-center text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors shrink-0"
+            >
+              <Menu size={20} />
+            </button>
+
+            <h1 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 truncate text-center flex-1 min-w-0 px-1">
+              {activeConversation?.title || t("chat.title")}
+            </h1>
+
+            <div className="flex items-center gap-1.5 shrink-0">
+              {/* Chip Quota với mini animated SVG ring */}
+              <button
+                type="button"
+                onClick={() => {
+                  setUsageOpen(true);
+                  loadUsage();
+                }}
+                aria-label={t("chat.usageAria")}
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900/60 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors text-xs font-semibold"
+              >
+                <svg className="w-3.5 h-3.5 -rotate-90 shrink-0" viewBox="0 0 20 20">
+                  <circle cx="10" cy="10" r="7" className="stroke-zinc-200 dark:stroke-zinc-700 fill-none" strokeWidth="2.5" />
+                  <circle
+                    cx="10"
+                    cy="10"
+                    r="7"
+                    className={clsx(
+                      "fill-none transition-all duration-500",
+                      usageTonePill === "danger"
+                        ? "stroke-rose-500"
+                        : usageTonePill === "warn"
+                        ? "stroke-amber-500"
+                        : "stroke-emerald-500"
+                    )}
+                    strokeWidth="2.5"
+                    strokeDasharray={44}
+                    strokeDashoffset={
+                      currentUsage && !currentUsage.unlimited
+                        ? 44 - (44 * Math.min(100, Math.max(0, currentUsage.percentRemaining ?? 100))) / 100
+                        : 0
+                    }
+                    strokeLinecap="round"
+                  />
+                </svg>
+                <span className={clsx(
+                  TEXT_TONE[usageTonePill],
+                  currentUsage?.percentRemaining !== undefined && currentUsage.percentRemaining <= 5 && "animate-pulse"
+                )}>
+                  {currentUsage && !currentUsage.unlimited ? `${currentUsage.percentRemaining}%` : "100%"}
+                </span>
+              </button>
+
+              {/* Nút ⋯ mở MobileActionsSheet */}
+              <button
+                type="button"
+                onClick={() => setActionsSheetOpen(true)}
+                aria-label={t("chat.moreActions")}
+                className="w-10 h-10 rounded-xl flex items-center justify-center text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors shrink-0"
+              >
+                <MoreHorizontal size={20} />
+              </button>
+            </div>
+          </div>
+
+          {/* Hàng 2: ModelSelector (flex-1 min-w-0) + Nút Persona nếu active */}
+          <div className="flex items-center gap-2 mt-1.5">
+            <div className="flex-1 min-w-0">
+              <ModelSelector models={models} value={currentSelection} onChange={handleModelChange} />
+            </div>
+            <button
+              type="button"
+              onClick={() => setPersonasOpen(true)}
+              aria-label={t("personas.tooltip") || "Trợ lý AI chuyên biệt"}
+              className={clsx(
+                "h-9 px-2.5 rounded-xl flex items-center gap-1.5 text-xs transition-colors shrink-0 border",
+                activePersona
+                  ? "bg-brand-500/10 text-brand-600 dark:text-brand-400 border-brand-500/30 font-semibold"
+                  : "border-zinc-200 dark:border-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-600 dark:text-zinc-400"
+              )}
+            >
+              <Bot size={15} />
+              {activePersona && (
+                <span className="max-w-[70px] truncate">{getLocalizedPersona(activePersona, lang)?.name || "Persona"}</span>
+              )}
+            </button>
+          </div>
+        </header>
+
+        {/* Desktop Header (>= md) */}
+        <header className="hidden md:flex chat-header relative z-30 items-center justify-between border-b">
           <div className="chat-header-model"><ModelSelector models={models} value={currentSelection} onChange={handleModelChange} /></div>
           <div className="chat-header-actions flex items-center gap-1">
+          <Tooltip label={t("personas.tooltip") || "Trợ lý AI chuyên biệt"} align="end">
+            <button
+              onClick={() => setPersonasOpen(true)}
+              aria-label={t("personas.tooltip") || "Trợ lý AI chuyên biệt"}
+              className={clsx(
+                "p-2 rounded-xl transition-colors",
+                activePersona
+                  ? "bg-brand-500/10 text-brand-600 dark:text-brand-400 font-medium"
+                  : "hover:bg-black/5 dark:hover:bg-white/10"
+              )}
+            >
+              <Bot size={18} />
+            </button>
+          </Tooltip>
           <ThemeToggle className="me-1" />
           <Tooltip label={t("chat.usageTip")} align="end">
             <button
@@ -585,18 +793,40 @@ export default function Chat() {
               )}
             </button>
           </Tooltip>
+          <Tooltip label={t("chat.shareTip")} align="end">
+            <button
+              onClick={() => setShareOpen(true)}
+              disabled={!activeId || messages.length === 0}
+              aria-label={t("chat.shareTip")}
+              className="p-2 rounded-xl hover:bg-black/5 dark:hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+            >
+              <Share2 size={18} />
+            </button>
+          </Tooltip>
+          <Tooltip label={t("chat.printTip")} align="end">
+            <button
+              onClick={() => window.print()}
+              disabled={messages.length === 0}
+              aria-label={t("chat.printTip")}
+              className="p-2 rounded-xl hover:bg-black/5 dark:hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+            >
+              <Printer size={18} />
+            </button>
+          </Tooltip>
           <Tooltip label={t("chat.exportTip")} align="end">
-<button
-            onClick={handleExport}
-            disabled={messages.length === 0}
-            aria-label={t("chat.exportAria")}
-            className="p-2 rounded-xl hover:bg-black/5 dark:hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-          >
-            <Download size={18} />
-          </button>
-</Tooltip>
+            <button
+              onClick={handleExport}
+              disabled={messages.length === 0}
+              aria-label={t("chat.exportAria")}
+              className="p-2 rounded-xl hover:bg-black/5 dark:hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+            >
+              <Download size={18} />
+            </button>
+          </Tooltip>
           </div>
         </header>
+
+        <AnnouncementBanner />
 
         <div className="relative flex-1 min-h-0">
           <div ref={scrollRef} onScroll={handleScroll} className="h-full overflow-y-auto">
@@ -642,6 +872,7 @@ export default function Chat() {
                     onFeedback={handleFeedback}
                     onEdit={handleEdit}
                     onRetry={handleRetry}
+                    onFork={handleForkChat}
                   />
                 ))}
               </div>
@@ -667,7 +898,93 @@ export default function Chat() {
           </div>
         </div>
 
-        <ChatInput key={activeId || "draft"} onSend={handleSend} isStreaming={isStreaming} disabled={isSubmitting || messagesLoading} onStop={stop} allowImage={allowImage} />
+        {activePersona && (() => {
+          const locPersona = getLocalizedPersona(activePersona, t);
+          return (
+            <div className="px-4 py-1.5 bg-brand-500/5 dark:bg-brand-500/10 border-t border-brand-500/20 text-xs flex items-center justify-between text-brand-700 dark:text-brand-300">
+              <span className="flex items-center gap-1.5 font-medium">
+                <span>{locPersona.avatar || "🤖"}</span>
+                <span>{t("personas.activeNotice") || "Đang kích hoạt trợ lý:"} <strong>{locPersona.name}</strong> ({locPersona.role})</span>
+              </span>
+              <button
+                onClick={() => setActivePersona(null)}
+                className="text-xs hover:underline opacity-80 hover:opacity-100"
+              >
+                {t("personas.cancelPersona") || "Hủy chế độ trợ lý"}
+              </button>
+            </div>
+          );
+        })()}
+
+
+        {/* ── Quota Banners (animated entrance, fully accessible) ── */}
+        <AnimatePresence mode="wait">
+          {usage?.quota?.isExhausted ? (
+            /* Exhausted – đã hết 100% */
+            <motion.div
+              key="quota-exhausted"
+              role="alert"
+              aria-live="assertive"
+              aria-atomic="true"
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 4 }}
+              transition={{ duration: 0.25 }}
+              className="mx-3 sm:mx-4 mb-2 p-3 rounded-2xl bg-red-500/10 border border-red-500/30 text-red-700 dark:text-red-400 flex flex-wrap sm:flex-nowrap items-center justify-between gap-2 sm:gap-3 text-xs shadow-xs"
+            >
+              <div className="flex items-center gap-2.5 min-w-0">
+                <ShieldAlert size={18} aria-hidden="true" className="text-red-500 shrink-0" />
+                <span>
+                  Bạn đã dùng hết{" "}
+                  <strong>{usage.quota.dailyLimit?.toLocaleString()} tokens</strong>{" "}
+                  hôm nay (Gói {usage.quota.tier?.toUpperCase()}). Hạn mức đặt lại lúc 00:00
+                  {usage.quota.timezone ? ` (${usage.quota.timezone})` : ""}.
+                </span>
+              </div>
+              <Link
+                to="/pricing"
+                aria-label="Nâng cấp gói để tiếp tục chat"
+                className="shrink-0 px-3.5 py-1.5 rounded-xl bg-red-600 hover:bg-red-500 text-white font-semibold text-xs shadow-xs flex items-center gap-1.5 transition-all active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
+              >
+                <span>Nâng cấp ngay</span>
+                <ArrowUpRight size={13} aria-hidden="true" />
+              </Link>
+            </motion.div>
+          ) : usage?.quota?.isWarning ? (
+            /* Warning – ≥ 80% */
+            <motion.div
+              key="quota-warning"
+              role="status"
+              aria-live="polite"
+              aria-atomic="true"
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 4 }}
+              transition={{ duration: 0.25 }}
+              className="mx-3 sm:mx-4 mb-2 p-2.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-800 dark:text-amber-300 flex flex-wrap sm:flex-nowrap items-center justify-between gap-2 sm:gap-3 text-xs shadow-xs"
+            >
+              <div className="flex items-center gap-2.5 min-w-0">
+                <AlertTriangle size={16} aria-hidden="true" className="text-amber-500 shrink-0" />
+                <span>
+                  Bạn đã sử dụng{" "}
+                  <strong>{usage.quota.percentUsed}%</strong>{" "}
+                  hạn mức hôm nay ({usage.quota.usedToday?.toLocaleString()} /{" "}
+                  {usage.quota.dailyLimit?.toLocaleString()} tokens).
+                </span>
+              </div>
+              <Link
+                to="/pricing"
+                aria-label="Mở rộng hạn mức token bằng cách nâng cấp gói"
+                className="shrink-0 text-xs font-semibold text-amber-600 dark:text-amber-400 hover:text-amber-500 hover:underline flex items-center gap-1 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 rounded"
+              >
+                <span>Mở rộng hạn mức</span>
+                <ArrowUpRight size={13} aria-hidden="true" />
+              </Link>
+            </motion.div>
+          ) : null}
+        </AnimatePresence>
+
+        <ChatInput key={activeId || "draft"} onSend={handleSend} isStreaming={isStreaming} disabled={isSubmitting || messagesLoading || Boolean(usage?.quota?.isExhausted)} onStop={stop} allowImage={allowImage} restoredText={restoredText} />
         <UsageModal
           open={usageOpen}
           onClose={() => setUsageOpen(false)}
@@ -676,6 +993,25 @@ export default function Chat() {
           error={usageError}
           onRefresh={loadUsage}
           current={currentSelection}
+        />
+        <ShareModal
+          open={shareOpen}
+          onClose={() => setShareOpen(false)}
+          conversation={activeConversation}
+        />
+        <PersonasModal
+          open={personasOpen}
+          onClose={() => setPersonasOpen(false)}
+          onSelectPersona={handleSelectPersona}
+        />
+        <MobileActionsSheet
+          open={actionsSheetOpen}
+          onClose={() => setActionsSheetOpen(false)}
+          onShare={() => setShareOpen(true)}
+          onPrint={() => window.print()}
+          onExport={handleExport}
+          canShare={Boolean(activeId && messages.length > 0)}
+          canExport={messages.length > 0}
         />
       </div>
     </div>
