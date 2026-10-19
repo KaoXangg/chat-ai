@@ -162,9 +162,9 @@ Mở SSMS, kết nối SQL Server và chạy:
 CREATE DATABASE chat_ai;
 ```
 
-Chọn database `chat_ai`, sau đó mở và thực thi (F5) file `backend/sql/schema.sql` để tạo cấu trúc bảng.
+Chọn database `chat_ai`, sau đó mở và thực thi (F5) file `backend/database/schema.sql` để tạo cấu trúc bảng.
 
-Backend tự bổ sung các cột và index tương thích khi khởi động, gồm `PasswordResets.attempts`, `Users.tokenVersion` và `Messages.requestId`. Tài khoản database cần quyền thay đổi schema cho bước này; có thể chạy `backend/sql/schema.sql` trước bằng tài khoản quản trị database.
+Backend tự bổ sung các cột và index tương thích khi khởi động, gồm `PasswordResets.attempts`, `Users.tokenVersion` và `Messages.requestId`. Tài khoản database cần quyền thay đổi schema cho bước này; có thể chạy `backend/database/schema.sql` trước bằng tài khoản quản trị database.
 
 ### 3. Chạy Backend
 
@@ -181,7 +181,7 @@ npm run seed              # Khởi tạo dữ liệu ban đầu (chạy lần đ
 npm run dev
 ```
 
-Sau khi seed lần đầu, chạy lại `backend/sql/schema.sql` trong SSMS để áp dụng hạn mức token cho danh sách model vừa tạo.
+Sau khi seed lần đầu, chạy lại `backend/database/schema.sql` trong SSMS để áp dụng hạn mức token cho danh sách model vừa tạo.
 
 API chạy tại `http://localhost:5000`, kiểm tra tại `http://localhost:5000/api/health`.
 
