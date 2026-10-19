@@ -10,6 +10,7 @@ import {
   modelKey,
   getUserTodayQuota,
   normalizeTier,
+  getTierMultiplier,
   TIER_LIMITS,
 } from "../utils/quota.js";
 import { validate } from "../middleware/validate.js";
@@ -30,6 +31,9 @@ router.get("/", async (req, res, next) => {
     ]);
     const configured = getConfiguredProviders();
 
+    // Hệ số nhân hạn mức per-model theo gói người dùng
+    const tierMultiplier = getTierMultiplier(req.user.userTier);
+
     const items = models.map((m) => {
       const used = usageMap.get(modelKey(m.provider, m.modelId)) || {
         promptTokens: 0,
@@ -37,8 +41,10 @@ router.get("/", async (req, res, next) => {
         totalTokens: 0,
         requests: 0,
       };
-      const limit = Number(m.dailyTokenLimit) || 0;
-      const unlimited = limit <= 0;
+      const baseLimit = Number(m.dailyTokenLimit) || 0;
+      // limit = 0 nghĩa là không giới hạn; lấy baseLimit nhân hệ số gói.
+      const effectiveLimit = baseLimit > 0 ? baseLimit * tierMultiplier : 0;
+      const unlimited = effectiveLimit <= 0;
       return {
         _id: m._id,
         provider: m.provider,
@@ -46,14 +52,14 @@ router.get("/", async (req, res, next) => {
         displayName: m.displayName,
         available: configured.includes(m.provider),
         unlimited,
-        limit,
+        limit: effectiveLimit,
         used: used.totalTokens,
         promptTokens: used.promptTokens,
         completionTokens: used.completionTokens,
         requests: used.requests,
-        remaining: unlimited ? null : Math.max(0, limit - used.totalTokens),
-        percentUsed: unlimited ? null : Math.min(100, Math.round((used.totalTokens / limit) * 100)),
-        percentRemaining: unlimited ? null : Math.max(0, 100 - Math.round((used.totalTokens / limit) * 100)),
+        remaining: unlimited ? null : Math.max(0, effectiveLimit - used.totalTokens),
+        percentUsed: unlimited ? null : Math.min(100, Math.round((used.totalTokens / effectiveLimit) * 100)),
+        percentRemaining: unlimited ? null : Math.max(0, 100 - Math.round((used.totalTokens / effectiveLimit) * 100)),
       };
     });
 

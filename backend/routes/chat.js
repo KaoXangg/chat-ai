@@ -156,7 +156,7 @@ async function runStream(req, res, conversation, messagesForAI, { webSources = [
     }
     const catalog = await loadModelCatalog();
     // Model mà người dùng đã dùng hết hạn mức token hôm nay sẽ bị router bỏ qua.
-    const excludedModels = await getExhaustedModels(req.user.id, catalog);
+    const excludedModels = await getExhaustedModels(req.user.id, catalog, req.user.userTier);
     for await (const item of streamWithFallback(messagesForAI, conversation.provider, conversation.model, { catalog, excludedModels, signal })) {
       usedProvider = item.provider;
       usedModel = item.model;
