@@ -56,8 +56,13 @@ for (const section of ["users", "conversations"]) {
   test(`deleting the last ${section} row returns to a valid page`, async ({ page }) => {
     const state = await setupAdmin(page, section);
     await page.getByRole("button", { name: "Next page", exact: true }).click();
-    if (section === "users") await page.getByRole("button", { name: "Delete account LastUser", exact: true }).click();
-    else await page.getByRole("button", { name: "Delete conversation", exact: true }).click();
+if (section === "users") {
+  await page.getByRole("button", { name: "Delete account LastUser", exact: true }).click();
+} else {
+  const deleteButtons = page.getByRole("button", { name: "Delete conversation", exact: true });
+  await expect(deleteButtons).toHaveCount(1);
+  await deleteButtons.click();
+}
     await page.getByRole("alertdialog").getByRole("button", { name: section === "users" ? "Delete permanently" : "Delete", exact: true }).click();
     await expect.poll(() => state.deleted).toBe(true);
     await expect(page.getByText(section === "users" ? "User0" : "Chat0", { exact: true }).filter({ visible: true })).toBeVisible();
