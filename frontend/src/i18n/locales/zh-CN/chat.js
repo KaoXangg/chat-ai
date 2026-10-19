@@ -98,4 +98,20 @@ export default {
   "export.you": "你",
   "export.ai": "AI",
   "export.attachedImages": "附 {n} 张图片",
+
+  "chat.moreActions": "更多操作",
+  "chat.shareTip": "分享对话",
+  "chat.printTip": "打印 / 导出 PDF",
+  "chat.themeToggle": "切换浅色/深色主题",
+
+  "usage.tier": "套餐 {tier}",
+  "usage.upgrade": "升级套餐",
+  "usage.exhaustedBanner": "您已达到今天的 Token 限额。请升级套餐或等待重置。",
+  "usage.warningBanner": "Token 使用量已超过 95%，即将达到今日限额。",
+  "usage.seeAll": "查看全部（{n}个模型）",
+  "usage.collapse": "收起",
+  "usage.retry": "重试",
+  "usage.noteLimit": "额度按模型独立计算，每天 00:00 重置。",
+  "usage.noteFallback": "当某个模型用尽时，系统会自动切换到仍有余量的可用模型。",
+  "usage.noteEst": "Token 数由 AI 提供商报告；若未报告，系统将自动估算。",
 };

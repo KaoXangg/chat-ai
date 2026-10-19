@@ -591,10 +591,6 @@ a:not([class*="focus-visible"]):focus-visible {
   .admin-model-actions { width: 100%; padding-top: 10px; border-top: 1px solid var(--workspace-border); }
   .admin-model-actions button:nth-last-child(2) { margin-inline-start: auto; }
   .admin-user-actions button, .admin-model-actions button { min-height: 40px; }
-  .chat-shell .chat-header { flex-wrap: wrap; gap: 8px; padding: 10px 12px; padding-top: max(10px, env(safe-area-inset-top)); }
-  .chat-header-model { order: 3; flex-basis: 100%; }
-  .chat-header-model > div { justify-content: space-between; }
-  .chat-header-actions { margin-inline-start: auto; }
   .chat-welcome { padding: 28px 20px; }
   .chat-composer-shell { padding-inline: 12px; }
   .chat-message-actions { opacity: 1; }

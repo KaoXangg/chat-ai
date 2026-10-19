@@ -46,13 +46,15 @@ export default function ModelSelector({ models, value, onChange }) {
           aria-haspopup="listbox"
           aria-expanded={open}
           aria-label={t("model.select")}
-          className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-sm font-medium glass border transition-colors ${
+          className={`w-full md:w-auto flex items-center justify-between md:justify-start gap-2 px-3 py-1.5 rounded-xl text-sm font-medium border transition-colors bg-zinc-50 dark:bg-zinc-800/80 md:bg-transparent md:glass ${
             open ? "border-brand-400/70" : "border-edge-light dark:border-edge-dark"
           }`}
         >
-          <Sparkles size={15} className="text-brand-500" />
-          <span>{current?.displayName || t("model.choose")}</span>
-          <ChevronDown size={14} className={`opacity-60 transition-transform ${open ? "rotate-180" : ""}`} />
+          <div className="flex items-center gap-2 min-w-0 truncate">
+            <Sparkles size={15} className="text-brand-500 shrink-0" />
+            <span className="truncate">{current?.displayName || t("model.choose")}</span>
+          </div>
+          <ChevronDown size={14} className={`opacity-60 shrink-0 transition-transform ${open ? "rotate-180" : ""}`} />
         </button>
 
         <AnimatePresence>
@@ -114,8 +116,10 @@ export default function ModelSelector({ models, value, onChange }) {
         </AnimatePresence>
       </div>
 
-      {/* Ngôn ngữ giao diện + ngôn ngữ AI trả lời, đặt cạnh lựa chọn mô hình. */}
-      <LanguageSwitcher mode="full" />
+      {/* Ngôn ngữ giao diện + ngôn ngữ AI trả lời, đặt cạnh lựa chọn mô hình trên desktop. */}
+      <div className="hidden md:block">
+        <LanguageSwitcher mode="full" />
+      </div>
     </div>
   );
 }

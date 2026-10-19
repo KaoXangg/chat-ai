@@ -98,4 +98,20 @@ export default {
   "export.you": "Tú",
   "export.ai": "IA",
   "export.attachedImages": "{n} imagen(es) adjunta(s)",
+
+  "chat.moreActions": "Más acciones",
+  "chat.shareTip": "Compartir conversación",
+  "chat.printTip": "Imprimir / Exportar PDF",
+  "chat.themeToggle": "Cambiar tema claro/oscuro",
+
+  "usage.tier": "Nivel {tier}",
+  "usage.upgrade": "Mejorar plan",
+  "usage.exhaustedBanner": "Has alcanzado el límite de tokens de hoy. Mejora tu plan o espera el reinicio.",
+  "usage.warningBanner": "El uso de tokens superó el 95%. Estás cerca del límite de hoy.",
+  "usage.seeAll": "Ver todos ({n} modelos)",
+  "usage.collapse": "Colapsar",
+  "usage.retry": "Reintentar",
+  "usage.noteLimit": "Los límites se calculan por modelo y se reinician a las 00:00 cada día.",
+  "usage.noteFallback": "Cuando un modelo se agota, el sistema cambia automáticamente a uno disponible.",
+  "usage.noteEst": "Los tokens son reportados por proveedores; si faltan, el sistema estima.",
 };

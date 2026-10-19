@@ -98,4 +98,20 @@ export default {
   "export.you": "You",
   "export.ai": "AI",
   "export.attachedImages": "{n} image(s) attached",
+
+  "chat.moreActions": "More actions",
+  "chat.shareTip": "Share conversation",
+  "chat.printTip": "Print / Export PDF",
+  "chat.themeToggle": "Toggle light/dark theme",
+
+  "usage.tier": "Tier {tier}",
+  "usage.upgrade": "Upgrade plan",
+  "usage.exhaustedBanner": "You have reached today's token limit. Upgrade your plan or wait for the reset.",
+  "usage.warningBanner": "Token usage has exceeded 95%. You are close to today's limit.",
+  "usage.seeAll": "See all ({n} models)",
+  "usage.collapse": "Collapse",
+  "usage.retry": "Retry",
+  "usage.noteLimit": "Quotas are counted separately per model and reset daily at 00:00.",
+  "usage.noteFallback": "When a model runs out, the system automatically switches to an available one.",
+  "usage.noteEst": "Tokens are reported by AI providers; if omitted, the system estimates.",
 };

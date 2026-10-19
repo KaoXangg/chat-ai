@@ -98,4 +98,20 @@ export default {
   "export.you": "Bạn",
   "export.ai": "AI",
   "export.attachedImages": "Đính kèm {n} ảnh",
+
+  "chat.moreActions": "Thao tác khác",
+  "chat.shareTip": "Chia sẻ cuộc trò chuyện",
+  "chat.printTip": "In / Xuất PDF",
+  "chat.themeToggle": "Đổi giao diện sáng/tối",
+
+  "usage.tier": "Gói {tier}",
+  "usage.upgrade": "Nâng cấp gói",
+  "usage.exhaustedBanner": "Bạn đã dùng hết hạn mức token hôm nay. Hãy nâng cấp hoặc đợi làm mới.",
+  "usage.warningBanner": "Mức sử dụng đã vượt quá 95%. Sắp hết hạn mức hôm nay.",
+  "usage.seeAll": "Xem tất cả ({n} mô hình)",
+  "usage.collapse": "Thu gọn",
+  "usage.retry": "Thử lại",
+  "usage.noteLimit": "Hạn mức tính riêng theo từng mô hình và làm mới vào 00:00 mỗi ngày.",
+  "usage.noteFallback": "Khi một mô hình hết lượt, hệ thống tự động chuyển sang mô hình còn dung lượng.",
+  "usage.noteEst": "Số token do nhà cung cấp AI báo về; nếu không có, hệ thống sẽ ước lượng.",
 };

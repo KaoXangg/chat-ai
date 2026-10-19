@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { Link } from "react-router-dom";
-import { Menu, ArrowDown, ArrowUpRight, Download, Gauge, Share2, Printer, Bot, AlertTriangle, ShieldAlert } from "lucide-react";
+import { Menu, ArrowDown, ArrowUpRight, Download, Gauge, Share2, Printer, Bot, AlertTriangle, ShieldAlert, MoreHorizontal } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import clsx from "clsx";
 import api from "../api/axios.js";
@@ -15,6 +15,7 @@ import UsageModal, { usageTone, TEXT_TONE } from "../components/UsageModal.jsx";
 import ShareModal from "../components/ShareModal.jsx";
 import PersonasModal from "../components/PersonasModal.jsx";
 import AnnouncementBanner from "../components/AnnouncementBanner.jsx";
+import MobileActionsSheet from "../components/MobileActionsSheet.jsx";
 import { getLocalizedPersona } from "../utils/personaHelper.js";
 import { useChatStream } from "../hooks/useChatStream.js";
 
@@ -50,6 +51,7 @@ export default function Chat() {
   const [usageOpen, setUsageOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const [personasOpen, setPersonasOpen] = useState(false);
+  const [actionsSheetOpen, setActionsSheetOpen] = useState(false);
   const [activePersona, setActivePersona] = useState(null);
   const [targetMessageId, setTargetMessageId] = useState(null);
   const [usageLoading, setUsageLoading] = useState(false);
@@ -658,17 +660,107 @@ export default function Chat() {
         onExpand={() => setDesktopCollapsed(false)}
       />
 
-      <div className="flex-1 flex flex-col min-w-0 min-h-0 relative z-10" inert={sidebarOpen && !isDesktop() ? "" : undefined}>
-        <header className="chat-header relative z-30 flex items-center justify-between border-b">
-          <button
-            onClick={() => setSidebarOpen(true)}
-            aria-label={t("chat.openSidebar")}
-            aria-expanded={sidebarOpen}
-            aria-controls="chat-navigation"
-            className="workspace-icon-button md:hidden"
-          >
-            <Menu size={20} />
-          </button>
+      <div className="flex-1 flex flex-col min-w-0 min-h-0 relative z-10 overflow-x-hidden" inert={sidebarOpen && !isDesktop() ? "" : undefined}>
+        {/* Mobile Header (< md): Nền đặc, 2 hàng, không blur, chuẩn WCAG AA */}
+        <header className="md:hidden flex flex-col bg-white dark:bg-[#12121a] border-b border-zinc-200 dark:border-zinc-800 px-3 pt-[max(8px,env(safe-area-inset-top))] pb-2.5 shrink-0 z-30 transition-colors">
+          {/* Hàng 1: Nút Menu | Tiêu đề đoạn chat (truncate) | Chip Quota | Nút ⋯ */}
+          <div className="flex items-center justify-between gap-2 h-10">
+            <button
+              type="button"
+              onClick={() => setSidebarOpen(true)}
+              aria-label={t("chat.openSidebar")}
+              aria-expanded={sidebarOpen}
+              aria-controls="chat-navigation"
+              className="w-10 h-10 rounded-xl flex items-center justify-center text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors shrink-0"
+            >
+              <Menu size={20} />
+            </button>
+
+            <h1 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 truncate text-center flex-1 min-w-0 px-1">
+              {activeConversation?.title || t("chat.title")}
+            </h1>
+
+            <div className="flex items-center gap-1.5 shrink-0">
+              {/* Chip Quota với mini animated SVG ring */}
+              <button
+                type="button"
+                onClick={() => {
+                  setUsageOpen(true);
+                  loadUsage();
+                }}
+                aria-label={t("chat.usageAria")}
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900/60 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors text-xs font-semibold"
+              >
+                <svg className="w-3.5 h-3.5 -rotate-90 shrink-0" viewBox="0 0 20 20">
+                  <circle cx="10" cy="10" r="7" className="stroke-zinc-200 dark:stroke-zinc-700 fill-none" strokeWidth="2.5" />
+                  <circle
+                    cx="10"
+                    cy="10"
+                    r="7"
+                    className={clsx(
+                      "fill-none transition-all duration-500",
+                      usageTonePill === "danger"
+                        ? "stroke-rose-500"
+                        : usageTonePill === "warn"
+                        ? "stroke-amber-500"
+                        : "stroke-emerald-500"
+                    )}
+                    strokeWidth="2.5"
+                    strokeDasharray={44}
+                    strokeDashoffset={
+                      currentUsage && !currentUsage.unlimited
+                        ? 44 - (44 * Math.min(100, Math.max(0, currentUsage.percentRemaining ?? 100))) / 100
+                        : 0
+                    }
+                    strokeLinecap="round"
+                  />
+                </svg>
+                <span className={clsx(
+                  TEXT_TONE[usageTonePill],
+                  currentUsage?.percentRemaining !== undefined && currentUsage.percentRemaining <= 5 && "animate-pulse"
+                )}>
+                  {currentUsage && !currentUsage.unlimited ? `${currentUsage.percentRemaining}%` : "100%"}
+                </span>
+              </button>
+
+              {/* Nút ⋯ mở MobileActionsSheet */}
+              <button
+                type="button"
+                onClick={() => setActionsSheetOpen(true)}
+                aria-label={t("chat.moreActions")}
+                className="w-10 h-10 rounded-xl flex items-center justify-center text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors shrink-0"
+              >
+                <MoreHorizontal size={20} />
+              </button>
+            </div>
+          </div>
+
+          {/* Hàng 2: ModelSelector (flex-1 min-w-0) + Nút Persona nếu active */}
+          <div className="flex items-center gap-2 mt-1.5">
+            <div className="flex-1 min-w-0">
+              <ModelSelector models={models} value={currentSelection} onChange={handleModelChange} />
+            </div>
+            <button
+              type="button"
+              onClick={() => setPersonasOpen(true)}
+              aria-label={t("personas.tooltip") || "Trợ lý AI chuyên biệt"}
+              className={clsx(
+                "h-9 px-2.5 rounded-xl flex items-center gap-1.5 text-xs transition-colors shrink-0 border",
+                activePersona
+                  ? "bg-brand-500/10 text-brand-600 dark:text-brand-400 border-brand-500/30 font-semibold"
+                  : "border-zinc-200 dark:border-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-600 dark:text-zinc-400"
+              )}
+            >
+              <Bot size={15} />
+              {activePersona && (
+                <span className="max-w-[70px] truncate">{getLocalizedPersona(activePersona, lang)?.name || "Persona"}</span>
+              )}
+            </button>
+          </div>
+        </header>
+
+        {/* Desktop Header (>= md) */}
+        <header className="hidden md:flex chat-header relative z-30 items-center justify-between border-b">
           <div className="chat-header-model"><ModelSelector models={models} value={currentSelection} onChange={handleModelChange} /></div>
           <div className="chat-header-actions flex items-center gap-1">
           <Tooltip label={t("personas.tooltip") || "Trợ lý AI chuyên biệt"} align="end">
@@ -701,21 +793,21 @@ export default function Chat() {
               )}
             </button>
           </Tooltip>
-          <Tooltip label="Chia sẻ cuộc trò chuyện" align="end">
+          <Tooltip label={t("chat.shareTip")} align="end">
             <button
               onClick={() => setShareOpen(true)}
               disabled={!activeId || messages.length === 0}
-              aria-label="Chia sẻ cuộc trò chuyện"
+              aria-label={t("chat.shareTip")}
               className="p-2 rounded-xl hover:bg-black/5 dark:hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
             >
               <Share2 size={18} />
             </button>
           </Tooltip>
-          <Tooltip label="In / Xuất PDF" align="end">
+          <Tooltip label={t("chat.printTip")} align="end">
             <button
               onClick={() => window.print()}
               disabled={messages.length === 0}
-              aria-label="In / Xuất PDF"
+              aria-label={t("chat.printTip")}
               className="p-2 rounded-xl hover:bg-black/5 dark:hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
             >
               <Printer size={18} />
@@ -911,6 +1003,15 @@ export default function Chat() {
           open={personasOpen}
           onClose={() => setPersonasOpen(false)}
           onSelectPersona={handleSelectPersona}
+        />
+        <MobileActionsSheet
+          open={actionsSheetOpen}
+          onClose={() => setActionsSheetOpen(false)}
+          onShare={() => setShareOpen(true)}
+          onPrint={() => window.print()}
+          onExport={handleExport}
+          canShare={Boolean(activeId && messages.length > 0)}
+          canExport={messages.length > 0}
         />
       </div>
     </div>
