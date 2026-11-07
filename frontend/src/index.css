@@ -190,13 +190,20 @@ a:not([class*="focus-visible"]):focus-visible {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 .markdown-body table {
-  display: block; overflow-x: auto; max-width: 100%; margin: 1em 0;
+  width: 100%; max-width: 100%; margin: 0;
   border-collapse: collapse; font-size: 0.925em;
 }
 .markdown-body th, .markdown-body td {
-  padding: 0.55em 0.9em; border: 1px solid rgba(128, 128, 128, 0.25); text-align: left;
+  padding: 0.6em 0.95em; border-bottom: 1px solid rgba(128, 128, 128, 0.16); text-align: left;
 }
-.markdown-body th { background: rgba(128, 128, 128, 0.1); font-weight: 600; }
+.markdown-body th + th, .markdown-body td + td {
+  border-left: 1px solid rgba(128, 128, 128, 0.12);
+}
+.markdown-body th { background: rgba(109, 91, 255, 0.06); font-weight: 600; }
+.dark .markdown-body th { background: rgba(109, 91, 255, 0.12); }
+.markdown-body tbody tr:nth-child(even) { background: rgba(128, 128, 128, 0.035); }
+.markdown-body tbody tr:hover { background: rgba(109, 91, 255, 0.05); }
+.markdown-body tbody tr:last-child td { border-bottom: 0; }
 
 /* Công thức toán (KaTeX): công thức riêng dòng cuộn ngang thay vì tràn khung */
 .markdown-body .katex { font-size: 1.05em; }
@@ -538,6 +545,10 @@ a:not([class*="focus-visible"]):focus-visible {
   border-color: #8a72ff;
   box-shadow: 0 0 0 3px rgba(138, 114, 255, 0.16), 0 6px 24px rgba(138, 114, 255, 0.08);
 }
+.chat-composer.is-streaming {
+  border-color: rgba(138, 114, 255, 0.65);
+  box-shadow: 0 0 0 2px rgba(138, 114, 255, 0.14), 0 8px 28px rgba(45, 212, 191, 0.08);
+}
 .chat-composer textarea {
   width: 100%;
   min-width: 0;
@@ -570,6 +581,18 @@ a:not([class*="focus-visible"]):focus-visible {
   .admin-sidebar { position: relative; }
   .admin-sidebar-rail { display: flex; }
   .workspace-icon-button.md\:hidden { display: none; }
+  .chat-shell { background: var(--workspace-sidebar); }
+  .chat-shell > .chat-sidebar { border-inline-end: 0; }
+  .chat-island {
+    margin: 8px 8px 8px 0;
+    border-radius: 18px;
+    border: 1px solid var(--workspace-border);
+    background: var(--workspace-bg);
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.045);
+  }
+  .dark .chat-island {
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  }
 }
 @media (max-width: 1199px) {
   .admin-header { padding-inline: 24px; }

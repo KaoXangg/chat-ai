@@ -24,6 +24,7 @@ const AdminAnnouncements = lazy(() => import("./pages/admin/Announcements.jsx"))
 const AdminSessions = lazy(() => import("./pages/admin/Sessions.jsx"));
 const SharedChat = lazy(() => import("./pages/SharedChat.jsx"));
 const Pricing = lazy(() => import("./pages/Pricing.jsx"));
+const Landing = lazy(() => import("./pages/Landing.jsx"));
 
 const AUTH_PATHS = new Set(["/login", "/register", "/forgot-password", "/reset-password"]);
 
@@ -74,6 +75,8 @@ export default function App() {
           transition={{ duration: 0.16, ease: "easeOut" }}
         >
           <Routes location={location}>
+            <Route path="/" element={<Lazy full><Landing /></Lazy>} />
+            <Route path="/welcome" element={<Lazy full><Landing /></Lazy>} />
             <Route path="/pricing" element={<Lazy full><Pricing /></Lazy>} />
             <Route path="/share/:shareId" element={<Lazy full><SharedChat /></Lazy>} />
 

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { Plus, Search, Pin, Pencil, Trash2, LogOut, ShieldCheck, X, Check, PanelLeftClose, PanelLeftOpen, SquarePen, MessageSquare, Dices, Loader2, ArrowUpRight, Settings, Folder, FolderPlus, FolderInput, ChevronDown, ChevronRight, Download } from "lucide-react";
+import { Plus, Search, Pin, Pencil, Trash2, LogOut, ShieldCheck, X, Check, PanelLeftClose, PanelLeftOpen, SquarePen, MessageSquare, Dices, Loader2, ArrowUpRight, Settings, Folder, FolderPlus, FolderInput, ChevronDown, ChevronRight, Download, Archive, ArchiveRestore, CheckSquare } from "lucide-react";
 import clsx from "clsx";
 import { useAuth } from "../context/AuthContext.jsx";
 import { useNavigate } from "react-router-dom";
@@ -51,7 +51,7 @@ function groupByDate(conversations) {
   return groups;
 }
 
-function MoveFolderMenu({ conv, folders, onClose, onMoveFolder, anchorRect }) {
+function MoveFolderMenu({ conv, folders, onClose, onMoveFolder, onToggleArchive, anchorRect }) {
   const { t } = useI18n();
   if (typeof document === "undefined" || !anchorRect) return null;
   return createPortal(
@@ -60,7 +60,7 @@ function MoveFolderMenu({ conv, folders, onClose, onMoveFolder, anchorRect }) {
         role="menu"
         onClick={(e) => e.stopPropagation()}
         style={{
-          top: Math.min(window.innerHeight - 240, Math.max(10, anchorRect.bottom + 4)),
+          top: Math.min(window.innerHeight - 280, Math.max(10, anchorRect.bottom + 4)),
           left: Math.min(window.innerWidth - 230, Math.max(10, anchorRect.left - 140)),
         }}
         className="fixed w-56 bg-white/95 dark:bg-neutral-900/95 backdrop-blur-xl border border-black/10 dark:border-white/10 rounded-2xl shadow-2xl p-1.5 text-xs space-y-1 z-50 animate-in fade-in zoom-in-95 duration-100"
@@ -92,13 +92,42 @@ function MoveFolderMenu({ conv, folders, onClose, onMoveFolder, anchorRect }) {
             <span className="truncate flex-1">{f.name}</span>
           </button>
         ))}
+
+        {onToggleArchive && (
+          <div className="pt-1 mt-1 border-t border-black/5 dark:border-white/10">
+            <button
+              onClick={() => { onToggleArchive(conv._id, !conv.archived); onClose(); }}
+              className="w-full text-start px-2.5 py-2 rounded-xl flex items-center gap-2 hover:bg-black/5 dark:hover:bg-white/5 text-amber-600 dark:text-amber-400 transition-colors font-medium"
+            >
+              {conv.archived ? <ArchiveRestore size={14} /> : <Archive size={14} />}
+              <span className="truncate">
+                {conv.archived ? "Khôi phục khỏi Lưu trữ" : "Lưu trữ hội thoại"}
+              </span>
+            </button>
+          </div>
+        )}
       </div>
     </div>,
     document.body
   );
 }
 
-function ConversationRow({ conv, isActive, isEditing, editValue, onEditValueChange, onSelect, onStartEdit, onCommitEdit, onPin, onDelete, onOpenMoveMenu }) {
+function ConversationRow({
+  conv,
+  isActive,
+  isEditing,
+  editValue,
+  onEditValueChange,
+  onSelect,
+  onStartEdit,
+  onCommitEdit,
+  onPin,
+  onDelete,
+  onOpenMoveMenu,
+  selectMode = false,
+  isSelected = false,
+  onToggleSelect,
+}) {
   const { t } = useI18n();
   return (
     <motion.div
@@ -107,7 +136,7 @@ function ConversationRow({ conv, isActive, isEditing, editValue, onEditValueChan
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, height: 0, marginBottom: 0 }}
       transition={{ duration: 0.18 }}
-      onClick={onSelect}
+      onClick={() => (selectMode ? onToggleSelect?.(conv._id) : onSelect())}
       className={clsx(
         "group relative flex items-center gap-2 ps-3.5 pe-2 py-2.5 rounded-xl cursor-pointer text-sm transition-colors overflow-hidden",
         isActive ? "bg-brand-500/10 text-brand-700 dark:text-brand-200" : "hover:bg-black/5 dark:hover:bg-white/5"
@@ -115,6 +144,16 @@ function ConversationRow({ conv, isActive, isEditing, editValue, onEditValueChan
     >
       {isActive && (
         <motion.span layoutId="active-rail" className="absolute left-0 top-1.5 bottom-1.5 w-0.5 rounded-full bg-linear-to-b from-brand-400 to-ion-400" />
+      )}
+      {selectMode && (
+        <input
+          type="checkbox"
+          checked={isSelected}
+          onChange={() => onToggleSelect?.(conv._id)}
+          onClick={(e) => e.stopPropagation()}
+          aria-label={`Chọn hội thoại ${conv.title}`}
+          className="rounded border-zinc-300 dark:border-zinc-600 text-brand-600 focus:ring-brand-500 shrink-0"
+        />
       )}
       {conv.pinned && <Pin size={12} className="shrink-0 opacity-60" />}
       {isEditing ? (
@@ -452,6 +491,91 @@ export default function Sidebar({
     }
   };
 
+  // Quản lý Chọn nhiều (Bulk Select) & Kho lưu trữ (Archive)
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState(() => new Set());
+  const [showArchived, setShowArchived] = useState(false);
+  const [archivedConvs, setArchivedConvs] = useState([]);
+  const [bulkBusy, setBulkBusy] = useState(false);
+
+  const loadArchivedConversations = async () => {
+    try {
+      const res = await api.get("/conversations", { params: { archived: "true" } });
+      if (res.data.success) {
+        setArchivedConvs(res.data.data.conversations || []);
+      }
+    } catch {
+      // Ignored
+    }
+  };
+
+  useEffect(() => {
+    if (showArchived) {
+      loadArchivedConversations();
+    }
+  }, [showArchived]);
+
+  const toggleSelectId = (id) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const handleToggleArchive = async (convId, archived) => {
+    try {
+      await api.patch(`/conversations/${convId}`, { archived });
+      toast.success(archived ? "Đã đưa hội thoại vào Kho lưu trữ." : "Đã khôi phục hội thoại.");
+      onRefreshConversations?.();
+      if (showArchived) loadArchivedConversations();
+    } catch {
+      toast.error("Không thể cập nhật trạng thái lưu trữ.");
+    }
+  };
+
+  const handleBulkArchive = async (archived = true) => {
+    const ids = Array.from(selectedIds);
+    if (!ids.length || bulkBusy) return;
+    setBulkBusy(true);
+    try {
+      const res = await api.post("/conversations/bulk-archive", { ids, archived });
+      if (res.data.success) {
+        toast.success(archived ? `Đã lưu trữ ${ids.length} cuộc trò chuyện.` : `Đã khôi phục ${ids.length} cuộc trò chuyện.`);
+        setSelectedIds(new Set());
+        setSelectMode(false);
+        onRefreshConversations?.();
+        if (showArchived) loadArchivedConversations();
+      }
+    } catch {
+      toast.error("Không thể lưu trữ hàng loạt.");
+    } finally {
+      setBulkBusy(false);
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    const ids = Array.from(selectedIds);
+    if (!ids.length || bulkBusy) return;
+    if (!window.confirm(`Bạn có chắc muốn xóa vĩnh viễn ${ids.length} cuộc hội thoại đã chọn?`)) return;
+    setBulkBusy(true);
+    try {
+      const res = await api.post("/conversations/bulk-delete", { ids });
+      if (res.data.success) {
+        toast.success(`Đã xóa ${ids.length} cuộc trò chuyện.`);
+        setSelectedIds(new Set());
+        setSelectMode(false);
+        onRefreshConversations?.();
+        if (showArchived) loadArchivedConversations();
+      }
+    } catch {
+      toast.error("Không thể xóa hàng loạt.");
+    } finally {
+      setBulkBusy(false);
+    }
+  };
+
 
   useEffect(() => {
     const media = window.matchMedia("(max-width: 767px)");
@@ -661,136 +785,241 @@ export default function Sidebar({
             )}
             {searchLoading && <Loader2 size={13} className="animate-spin text-brand-500 shrink-0" />}
           </div>
-        </div>
 
-        <div className="flex-1 min-h-0 overflow-y-auto mt-3 px-2 space-y-3">
-          {/* Kết quả tin nhắn khớp từ khóa */}
-          {messageResults.length > 0 && (
-            <div className="pb-2 mb-2 border-b border-edge-light dark:border-edge-dark">
-              <p className="px-3 mb-1 text-[11px] font-semibold uppercase tracking-wide text-brand-600 dark:text-brand-400">
-                {t("folder.messageResults")} ({messageResults.length})
-              </p>
-              <div className="space-y-1">
-                {messageResults.map((res) => (
-                  <button
-                    key={res.messageId}
-                    onClick={() => {
-                      onSelect(res.conversationId, res.messageId);
-                      if (isMobile) onCloseMobile();
-                    }}
-                    className="w-full text-start p-2 rounded-xl hover:bg-black/5 dark:hover:bg-white/5 transition-colors space-y-0.5 group"
-                  >
-                    <div className="flex items-center gap-1.5 text-xs font-medium text-brand-600 dark:text-brand-400 truncate">
-                      <MessageSquare size={12} className="shrink-0 opacity-70" />
-                      <span className="truncate">{res.conversationTitle}</span>
-                    </div>
-                    <p className="text-[12px] text-zinc-600 dark:text-zinc-400 line-clamp-2 leading-snug">
-                      {res.contentSnippet}
-                    </p>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
+          {/* Thanh công cụ Chọn nhiều & Kho lưu trữ */}
+          <div className="flex items-center justify-between gap-1.5 mt-2">
+            <button
+              type="button"
+              onClick={() => {
+                setSelectMode((v) => !v);
+                setSelectedIds(new Set());
+              }}
+              className={clsx(
+                "flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg text-[11px] font-medium border transition-colors",
+                selectMode
+                  ? "bg-brand-500/15 text-brand-600 dark:text-brand-400 border-brand-500/30"
+                  : "border-transparent bg-black/[0.03] dark:bg-white/[0.04] text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200"
+              )}
+            >
+              <CheckSquare size={12} />
+              <span>{selectMode ? `Đã chọn (${selectedIds.size})` : "Chọn nhiều"}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setShowArchived((v) => !v);
+                setSelectMode(false);
+                setSelectedIds(new Set());
+              }}
+              className={clsx(
+                "flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg text-[11px] font-medium border transition-colors",
+                showArchived
+                  ? "bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30"
+                  : "border-transparent bg-black/[0.03] dark:bg-white/[0.04] text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200"
+              )}
+            >
+              <Archive size={12} />
+              <span>{showArchived ? "Đang xem Lưu trữ" : "Kho lưu trữ"}</span>
+            </button>
+          </div>
 
-          {/* Danh sách Thư mục */}
-          {folders.length > 0 && (
-            <div className="pb-2 mb-2 border-b border-edge-light dark:border-edge-dark">
-              <div className="flex items-center justify-between px-3 mb-1.5">
-                <span className="text-[11px] font-semibold uppercase tracking-wide opacity-50 flex items-center gap-1.5">
-                  <Folder size={12} />
-                  <span>{t("folder.title")} ({folders.length})</span>
-                </span>
-                <button
-                  onClick={() => { setEditingFolder(null); setFolderModalOpen(true); }}
-                  aria-label={t("folder.newFolder")}
-                  className="p-1 rounded-md hover:bg-black/5 dark:hover:bg-white/10 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 transition-colors"
-                  title={t("folder.newFolder")}
-                >
-                  <FolderPlus size={13} />
-                </button>
-              </div>
-
-              <div className="space-y-0.5">
-                {folders.map((folder) => {
-                  const folderConvs = conversations.filter((c) => String(c.folderId) === String(folder.id));
-                  const isCollapsed = collapsedFolders.has(folder.id);
-                  return (
-                    <FolderAccordionItem
-                      key={folder.id}
-                      folder={folder}
-                      items={folderConvs}
-                      isCollapsed={isCollapsed}
-                      onToggle={() => {
-                        setCollapsedFolders((prev) => {
-                          const next = new Set(prev);
-                          if (next.has(folder.id)) next.delete(folder.id);
-                          else next.add(folder.id);
-                          return next;
-                        });
-                      }}
-                      onEdit={(f) => { setEditingFolder(f); setFolderModalOpen(true); }}
-                      onDelete={handleDeleteFolder}
-                      activeId={activeId}
-                      editingId={editingId}
-                      editValue={editValue}
-                      onEditValueChange={setEditValue}
-                      onSelect={(id) => onSelect(id)}
-                      onStartEdit={startEdit}
-                      onCommitEdit={commitEdit}
-                      onPin={(id, p) => onPin(id, p)}
-                      onDeleteConv={onDelete}
-                      onOpenMoveMenu={(conv, rect) => setMoveMenuState({ conv, anchorRect: rect })}
-                    />
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {/* Nút tạo thư mục đầu tiên nếu chưa có thư mục nào */}
-          {folders.length === 0 && (
-            <div className="px-3 pb-1">
+          {selectMode && selectedIds.size > 0 && (
+            <div className="mt-2 p-2 rounded-xl bg-brand-500/10 border border-brand-500/25 flex items-center justify-between gap-2 text-xs">
               <button
-                onClick={() => { setEditingFolder(null); setFolderModalOpen(true); }}
-                className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl border border-dashed border-edge-light dark:border-edge-dark text-xs text-zinc-500 hover:text-brand-600 dark:hover:text-brand-400 hover:border-brand-500/30 transition-colors"
+                type="button"
+                disabled={bulkBusy}
+                onClick={() => handleBulkArchive(!showArchived)}
+                className="flex-1 py-1.5 px-2 rounded-lg bg-white dark:bg-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-700 font-medium text-zinc-700 dark:text-zinc-200 flex items-center justify-center gap-1 shadow-xs"
               >
-                <span className="flex items-center gap-1.5">
-                  <FolderPlus size={13} />
-                  <span>Tạo thư mục mới</span>
-                </span>
-                <Plus size={12} />
+                {showArchived ? <ArchiveRestore size={12} /> : <Archive size={12} />}
+                <span>{showArchived ? "Khôi phục" : "Lưu trữ"}</span>
+              </button>
+              <button
+                type="button"
+                disabled={bulkBusy}
+                onClick={handleBulkDelete}
+                className="flex-1 py-1.5 px-2 rounded-lg bg-red-600 hover:bg-red-500 font-medium text-white flex items-center justify-center gap-1 shadow-xs"
+              >
+                <Trash2 size={12} />
+                <span>Xóa ({selectedIds.size})</span>
               </button>
             </div>
           )}
+        </div>
 
-          {groups.map((group) => (
-            <div key={group.key}>
-              <p className="px-3 mb-1 text-[11px] font-semibold uppercase tracking-wide opacity-40">{t(group.key)}</p>
-              <div className="space-y-1">
-                <AnimatePresence initial={false}>
-                  {group.items.map((conv) => (
-                    <ConversationRow
-                      key={conv._id}
-                      conv={conv}
-                      isActive={activeId === conv._id}
-                      isEditing={editingId === conv._id}
-                      editValue={editValue}
-                      onEditValueChange={setEditValue}
-                      onSelect={() => onSelect(conv._id)}
-                      onStartEdit={() => startEdit(conv)}
-                      onCommitEdit={commitEdit}
-                      onPin={() => onPin(conv._id, !conv.pinned)}
-                      onDelete={() => onDelete(conv._id)}
-                      onOpenMoveMenu={(conv, rect) => setMoveMenuState({ conv, anchorRect: rect })}
-                    />
-                  ))}
-                </AnimatePresence>
+        <div className="flex-1 min-h-0 overflow-y-auto mt-3 px-2 space-y-3">
+          {showArchived ? (
+            <div className="space-y-1">
+              <div className="flex items-center justify-between px-3 mb-1">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-amber-600 dark:text-amber-400">
+                  Hội thoại đã lưu trữ ({archivedConvs.length})
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setShowArchived(false)}
+                  className="text-[11px] text-brand-500 hover:underline"
+                >
+                  Quay lại
+                </button>
               </div>
+              {archivedConvs.length === 0 ? (
+                <p className="text-center text-xs opacity-40 py-6">Chưa có hội thoại nào trong Kho lưu trữ.</p>
+              ) : (
+                archivedConvs.map((conv) => (
+                  <ConversationRow
+                    key={conv._id}
+                    conv={conv}
+                    isActive={activeId === conv._id}
+                    isEditing={editingId === conv._id}
+                    editValue={editValue}
+                    onEditValueChange={setEditValue}
+                    onSelect={() => onSelect(conv._id)}
+                    onStartEdit={() => startEdit(conv)}
+                    onCommitEdit={commitEdit}
+                    onPin={() => handleToggleArchive(conv._id, false)}
+                    onDelete={() => onDelete(conv._id)}
+                    onOpenMoveMenu={(c, rect) => setMoveMenuState({ conv: c, anchorRect: rect })}
+                    selectMode={selectMode}
+                    isSelected={selectedIds.has(conv._id)}
+                    onToggleSelect={toggleSelectId}
+                  />
+                ))
+              )}
             </div>
-          ))}
-          {conversations.length === 0 && messageResults.length === 0 && (
-            <p className="text-center text-xs opacity-40 py-6">{t("sidebar.empty")}</p>
+          ) : (
+            <>
+              {/* Kết quả tin nhắn khớp từ khóa */}
+              {messageResults.length > 0 && (
+                <div className="pb-2 mb-2 border-b border-edge-light dark:border-edge-dark">
+                  <p className="px-3 mb-1 text-[11px] font-semibold uppercase tracking-wide text-brand-600 dark:text-brand-400">
+                    {t("folder.messageResults")} ({messageResults.length})
+                  </p>
+                  <div className="space-y-1">
+                    {messageResults.map((res) => (
+                      <button
+                        key={res.messageId}
+                        onClick={() => {
+                          onSelect(res.conversationId, res.messageId);
+                          if (isMobile) onCloseMobile();
+                        }}
+                        className="w-full text-start p-2 rounded-xl hover:bg-black/5 dark:hover:bg-white/5 transition-colors space-y-0.5 group"
+                      >
+                        <div className="flex items-center gap-1.5 text-xs font-medium text-brand-600 dark:text-brand-400 truncate">
+                          <MessageSquare size={12} className="shrink-0 opacity-70" />
+                          <span className="truncate">{res.conversationTitle}</span>
+                        </div>
+                        <p className="text-[12px] text-zinc-600 dark:text-zinc-400 line-clamp-2 leading-snug">
+                          {res.contentSnippet}
+                        </p>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Danh sách Thư mục */}
+              {folders.length > 0 && (
+                <div className="pb-2 mb-2 border-b border-edge-light dark:border-edge-dark">
+                  <div className="flex items-center justify-between px-3 mb-1.5">
+                    <span className="text-[11px] font-semibold uppercase tracking-wide opacity-50 flex items-center gap-1.5">
+                      <Folder size={12} />
+                      <span>{t("folder.title")} ({folders.length})</span>
+                    </span>
+                    <button
+                      onClick={() => { setEditingFolder(null); setFolderModalOpen(true); }}
+                      aria-label={t("folder.newFolder")}
+                      className="p-1 rounded-md hover:bg-black/5 dark:hover:bg-white/10 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 transition-colors"
+                      title={t("folder.newFolder")}
+                    >
+                      <FolderPlus size={13} />
+                    </button>
+                  </div>
+
+                  <div className="space-y-0.5">
+                    {folders.map((folder) => {
+                      const folderConvs = conversations.filter((c) => String(c.folderId) === String(folder.id));
+                      const isCollapsed = collapsedFolders.has(folder.id);
+                      return (
+                        <FolderAccordionItem
+                          key={folder.id}
+                          folder={folder}
+                          items={folderConvs}
+                          isCollapsed={isCollapsed}
+                          onToggle={() => {
+                            setCollapsedFolders((prev) => {
+                              const next = new Set(prev);
+                              if (next.has(folder.id)) next.delete(folder.id);
+                              else next.add(folder.id);
+                              return next;
+                            });
+                          }}
+                          onEdit={(f) => { setEditingFolder(f); setFolderModalOpen(true); }}
+                          onDelete={handleDeleteFolder}
+                          activeId={activeId}
+                          editingId={editingId}
+                          editValue={editValue}
+                          onEditValueChange={setEditValue}
+                          onSelect={(id) => onSelect(id)}
+                          onStartEdit={startEdit}
+                          onCommitEdit={commitEdit}
+                          onPin={(id, p) => onPin(id, p)}
+                          onDeleteConv={onDelete}
+                          onOpenMoveMenu={(conv, rect) => setMoveMenuState({ conv, anchorRect: rect })}
+                        />
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Nút tạo thư mục đầu tiên nếu chưa có thư mục nào */}
+              {folders.length === 0 && (
+                <div className="px-3 pb-1">
+                  <button
+                    onClick={() => { setEditingFolder(null); setFolderModalOpen(true); }}
+                    className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl border border-dashed border-edge-light dark:border-edge-dark text-xs text-zinc-500 hover:text-brand-600 dark:hover:text-brand-400 hover:border-brand-500/30 transition-colors"
+                  >
+                    <span className="flex items-center gap-1.5">
+                      <FolderPlus size={13} />
+                      <span>Tạo thư mục mới</span>
+                    </span>
+                    <Plus size={12} />
+                  </button>
+                </div>
+              )}
+
+              {groups.map((group) => (
+                <div key={group.key}>
+                  <p className="px-3 mb-1 text-[11px] font-semibold uppercase tracking-wide opacity-40">{t(group.key)}</p>
+                  <div className="space-y-1">
+                    <AnimatePresence initial={false}>
+                      {group.items.map((conv) => (
+                        <ConversationRow
+                          key={conv._id}
+                          conv={conv}
+                          isActive={activeId === conv._id}
+                          isEditing={editingId === conv._id}
+                          editValue={editValue}
+                          onEditValueChange={setEditValue}
+                          onSelect={() => onSelect(conv._id)}
+                          onStartEdit={() => startEdit(conv)}
+                          onCommitEdit={commitEdit}
+                          onPin={() => onPin(conv._id, !conv.pinned)}
+                          onDelete={() => onDelete(conv._id)}
+                          onOpenMoveMenu={(conv, rect) => setMoveMenuState({ conv, anchorRect: rect })}
+                          selectMode={selectMode}
+                          isSelected={selectedIds.has(conv._id)}
+                          onToggleSelect={toggleSelectId}
+                        />
+                      ))}
+                    </AnimatePresence>
+                  </div>
+                </div>
+              ))}
+              {conversations.length === 0 && messageResults.length === 0 && (
+                <p className="text-center text-xs opacity-40 py-6">{t("sidebar.empty")}</p>
+              )}
+            </>
           )}
         </div>
 
@@ -1026,6 +1255,7 @@ export default function Sidebar({
           anchorRect={moveMenuState.anchorRect}
           onClose={() => setMoveMenuState(null)}
           onMoveFolder={handleMoveFolder}
+          onToggleArchive={handleToggleArchive}
         />
       )}
     </>

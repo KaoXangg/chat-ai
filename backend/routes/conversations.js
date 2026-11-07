@@ -7,34 +7,42 @@ import { authMiddleware } from "../middleware/auth.js";
 import { serializeConversationMutation } from "../utils/chatLock.js";
 import { sequelize } from "../config/db.js";
 import { escapeLike, invalidInput, validateIdParam } from "../utils/validation.js";
+import { getTierFeatures, isExplicitFreeTier } from "../utils/quota.js";
 
 const router = express.Router();
 router.use(authMiddleware);
 router.param("id", validateIdParam);
 router.param("messageId", validateIdParam);
 
-function validateConversationFields({ title, pinned, provider, model }) {
+function validateConversationFields({ title, pinned, archived, provider, model }) {
   if (title !== undefined && typeof title !== "string") throw invalidInput("Tiêu đề không hợp lệ.");
   if (pinned !== undefined && typeof pinned !== "boolean") throw invalidInput("Trạng thái ghim không hợp lệ.");
+  if (archived !== undefined && typeof archived !== "boolean") throw invalidInput("Trạng thái lưu trữ không hợp lệ.");
   if (provider !== undefined && !["groq", "gemini", "openrouter"].includes(provider)) throw invalidInput("Nhà cung cấp không hợp lệ.");
   if (model !== undefined && (typeof model !== "string" || !model.trim() || model.length > 150)) throw invalidInput("Mô hình không hợp lệ.");
 }
 
-// GET /api/conversations?search=... -> danh sách cuộc trò chuyện của người dùng, ưu tiên mục đã ghim.
+// GET /api/conversations?search=...&archived=... -> danh sách cuộc trò chuyện của người dùng, ưu tiên mục đã ghim.
 router.get("/", async (req, res, next) => {
   try {
-    const { search } = req.query;
+    const { search, archived } = req.query;
     if (search !== undefined && (typeof search !== "string" || search.length > 120)) throw invalidInput("Từ khóa tìm kiếm không hợp lệ.");
     const where = { userId: req.user.id };
     if (search) where.title = { [Op.like]: `%${escapeLike(search)}%` };
 
-    const conversations = await Conversation.findAll({
+    const allRows = await Conversation.findAll({
       where,
       order: [
         ["pinned", "DESC"],
         ["updatedAt", "DESC"],
       ],
     });
+    const conversations =
+      archived === "all"
+        ? allRows
+        : archived === "true"
+        ? allRows.filter((c) => Boolean(c.archived))
+        : allRows.filter((c) => !c.archived);
     res.json({ success: true, data: { conversations } });
   } catch (err) {
     next(err);
@@ -93,14 +101,117 @@ router.get("/search-messages", async (req, res, next) => {
 
 router.post("/", async (req, res, next) => {
   try {
-    const { provider = "openrouter", model = "openrouter/free" } = req.body;
+    const { provider = "openrouter", model = "openrouter/free", systemPrompt, personaId, folderId } = req.body;
     validateConversationFields({ provider, model });
+
+    if (isExplicitFreeTier(req.user)) {
+      const features = getTierFeatures(req.user.userTier);
+      if (Number.isFinite(features.maxConversations)) {
+        const count = await Conversation.count({ where: { userId: req.user.id } });
+        if (count >= features.maxConversations) {
+          return res.status(403).json({
+            success: false,
+            error: {
+              code: "TIER_LIMIT_EXCEEDED",
+              message: `Gói Free chỉ lưu tối đa ${features.maxConversations} cuộc hội thoại. Hãy xóa bớt hội thoại cũ hoặc nâng cấp gói Plus/Premium.`,
+            },
+          });
+        }
+      }
+    }
+
     const conversation = await Conversation.create({
       userId: req.user.id,
       provider,
       model,
+      ...(typeof systemPrompt === "string" && systemPrompt.trim() ? { systemPrompt: systemPrompt.trim().slice(0, 2000) } : {}),
+      ...(personaId ? { personaId: Number(personaId) } : {}),
+      ...(folderId ? { folderId: Number(folderId) } : {}),
     });
     res.status(201).json({ success: true, data: { conversation } });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * POST /api/conversations/bulk-delete
+ * Xóa hàng loạt cuộc trò chuyện được chọn của người dùng hiện tại.
+ */
+router.post("/bulk-delete", async (req, res, next) => {
+  try {
+    const rawIds = req.body?.ids;
+    if (!Array.isArray(rawIds) || rawIds.length === 0 || rawIds.length > 200) {
+      return res.status(400).json({
+        success: false,
+        error: { code: "INVALID_INPUT", message: "Danh sách hội thoại cần xóa không hợp lệ (1–200 mục)." },
+      });
+    }
+    const ids = rawIds
+      .map((id) => Number(id))
+      .filter((id) => Number.isSafeInteger(id) && id > 0 && id <= 2147483647);
+    if (!ids.length) {
+      return res.status(400).json({
+        success: false,
+        error: { code: "INVALID_INPUT", message: "Không có ID hội thoại hợp lệ." },
+      });
+    }
+
+    const owned = await Conversation.findAll({
+      where: { id: { [Op.in]: ids }, userId: req.user.id },
+      attributes: ["id"],
+    });
+    const ownedIds = owned.map((c) => c.id);
+    if (!ownedIds.length) {
+      return res.json({ success: true, data: { deletedCount: 0 } });
+    }
+
+    await sequelize.transaction(async (transaction) => {
+      await Message.destroy({ where: { conversationId: { [Op.in]: ownedIds } }, transaction });
+      await Conversation.destroy({ where: { id: { [Op.in]: ownedIds }, userId: req.user.id }, transaction });
+    });
+
+    res.json({
+      success: true,
+      data: { deletedCount: ownedIds.length, deletedIds: ownedIds.map(String) },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * POST /api/conversations/bulk-archive
+ * Lưu trữ hoặc khôi phục hàng loạt cuộc trò chuyện.
+ */
+router.post("/bulk-archive", async (req, res, next) => {
+  try {
+    const { ids: rawIds, archived = true } = req.body || {};
+    if (!Array.isArray(rawIds) || rawIds.length === 0 || rawIds.length > 200) {
+      return res.status(400).json({
+        success: false,
+        error: { code: "INVALID_INPUT", message: "Danh sách hội thoại không hợp lệ." },
+      });
+    }
+    const ids = rawIds
+      .map((id) => Number(id))
+      .filter((id) => Number.isSafeInteger(id) && id > 0 && id <= 2147483647);
+    if (!ids.length) {
+      return res.status(400).json({
+        success: false,
+        error: { code: "INVALID_INPUT", message: "Không có ID hội thoại hợp lệ." },
+      });
+    }
+
+    const [updatedCount] = await Conversation.update(
+      { archived: Boolean(archived) },
+      { where: { id: { [Op.in]: ids }, userId: req.user.id } }
+    );
+
+    res.json({
+      success: true,
+      data: { updatedCount: Number(updatedCount) || 0, archived: Boolean(archived) },
+    });
   } catch (err) {
     next(err);
   }
@@ -160,8 +271,8 @@ router.get("/:id/messages/:messageId/images/:index", async (req, res, next) => {
 
 router.patch("/:id", serializeConversationMutation(async (req, res, next) => {
   try {
-    const { title, pinned, provider, model, folderId } = req.body;
-    validateConversationFields({ title, pinned, provider, model });
+    const { title, pinned, archived, provider, model, folderId } = req.body;
+    validateConversationFields({ title, pinned, archived, provider, model });
     const conversation = await Conversation.findOne({ where: { id: req.params.id, userId: req.user.id } });
     if (!conversation) {
       return res.status(404).json({ success: false, error: { code: "NOT_FOUND", message: "Không tìm thấy cuộc trò chuyện." } });
@@ -169,6 +280,7 @@ router.patch("/:id", serializeConversationMutation(async (req, res, next) => {
 
     if (title !== undefined) conversation.title = title.trim().slice(0, 120) || "Cuộc trò chuyện mới";
     if (pinned !== undefined) conversation.pinned = Boolean(pinned);
+    if (archived !== undefined) conversation.archived = Boolean(archived);
     if (provider !== undefined) conversation.provider = provider;
     if (model !== undefined) conversation.model = model;
     if (folderId !== undefined) conversation.folderId = folderId ? Number(folderId) : null;

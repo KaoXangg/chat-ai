@@ -23,9 +23,19 @@ const LEGACY_MODELS = {
 // được quyết định bởi capability "vision" của từng model (Gemini, Groq và OpenRouter adapter đều gửi được ảnh).
 const LEGACY_VISION_PROVIDERS = new Set(["gemini"]);
 
-// Provider vừa bị giới hạn tốc độ/hết quota sẽ được tạm bỏ qua để các request sau không phải chờ lỗi lại.
+// Model vừa bị giới hạn tốc độ/hết quota sẽ được tạm bỏ qua để các request sau không phải chờ lỗi lại.
 const RATE_LIMIT_COOLDOWN_MS = 30_000;
 const cooldownUntil = {};
+
+export function cooldownKey(providerName, modelId) {
+  return `${providerName}/${modelId || "default"}`;
+}
+
+export function clearCooldowns() {
+  for (const key of Object.keys(cooldownUntil)) {
+    delete cooldownUntil[key];
+  }
+}
 
 export const AI_ERROR_CODES = {
   RATE_LIMITED: "RATE_LIMITED",
@@ -118,7 +128,15 @@ export function buildAttempts({ preferredProvider, preferredModel, catalog, need
     }
     candidates = allowed;
 
-    const chosen = (name === preferredProvider && candidates.find((m) => m.modelId === preferredModel)) || candidates[0];
+    const now = Date.now();
+    const preferredCandidate = name === preferredProvider ? candidates.find((m) => m.modelId === preferredModel) : null;
+    const activeCandidates = candidates.filter((m) => (cooldownUntil[cooldownKey(name, m.modelId)] || 0) <= now);
+    const chosen =
+      (preferredCandidate && (cooldownUntil[cooldownKey(name, preferredCandidate.modelId)] || 0) <= now
+        ? preferredCandidate
+        : activeCandidates[0]) ||
+      preferredCandidate ||
+      candidates[0];
     attempts.push({ providerName: name, model: chosen.modelId, contextLength: chosen.contextLength });
   }
 
@@ -142,10 +160,11 @@ export async function* streamWithFallback(messages, preferredProvider = "groq", 
   for (const attempt of attempts) {
     signal?.throwIfAborted();
     const { providerName, model: usedModel, contextLength } = attempt;
+    const cdKey = cooldownKey(providerName, usedModel);
 
-    if ((cooldownUntil[providerName] || 0) > Date.now()) {
+    if ((cooldownUntil[cdKey] || 0) > Date.now()) {
       rateLimited = true;
-      errors.push(`${providerName}: đang tạm nghỉ do giới hạn tốc độ`);
+      errors.push(`${cdKey}: đang tạm nghỉ do giới hạn tốc độ`);
       continue;
     }
 
@@ -200,9 +219,9 @@ export async function* streamWithFallback(messages, preferredProvider = "groq", 
       }
       if (isRateLimitError(err)) {
         rateLimited = true;
-        cooldownUntil[providerName] = Date.now() + RATE_LIMIT_COOLDOWN_MS;
+        cooldownUntil[cdKey] = Date.now() + RATE_LIMIT_COOLDOWN_MS;
       }
-      errors.push(`${providerName}: ${err.message}`);
+      errors.push(`${providerName}/${usedModel}: ${err.message}`);
     }
   }
 

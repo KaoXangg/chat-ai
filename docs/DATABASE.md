@@ -215,6 +215,7 @@ erDiagram
 | `aiLanguage` | `NVARCHAR(10)` | ❌ | `'auto'` | Ngôn ngữ ưu tiên khi AI trả lời (`auto`, `vi`, `en`...) |
 | `tokenVersion` | `INT` | ❌ | `0` | Số phiên bản token để thu hồi JWT cũ khi đổi mật khẩu |
 | `systemPrompt` | `NVARCHAR(2000)` | ✔️ | `NULL` | Chỉ dẫn hệ thống cá nhân hóa cho tài khoản |
+| `memories` | `NVARCHAR(MAX)` | ✔️ | `NULL` | Mảng JSON bộ nhớ dài hạn của người dùng (`[{ id, content, createdAt }]`) |
 | `customDailyTokenLimit`| `INT` | ✔️ | `NULL` | Hạn mức token riêng do Admin cấp (ghi đè hạn mức theo gói) |
 | `userTier` | `NVARCHAR(20)` | ❌ | `'free'` | Gói tài khoản: `'free'`, `'plus'`, `'premium'`, `'pro'`, `'vip'` |
 | `createdAt` | `DATETIME2` | ❌ | `SYSUTCDATETIME()` | Thời điểm tạo tài khoản (UTC) |
@@ -252,6 +253,7 @@ erDiagram
 | `provider` | `NVARCHAR(50)` | ❌ | `'openrouter'` | Nhà cung cấp AI đang chọn cho hội thoại |
 | `model` | `NVARCHAR(150)` | ❌ | `'openrouter/free'` | Mô hình AI đang chọn cho hội thoại |
 | `pinned` | `BIT` | ❌ | `0` | Ghim cuộc trò chuyện lên đầu danh sách |
+| `archived` | `BIT` | ❌ | `0` | Lưu trữ hội thoại cũ (ẩn khỏi danh sách chính nhưng không xóa) |
 | `systemPrompt` | `NVARCHAR(2000)`| ✔️ | `NULL` | Chỉ dẫn hệ thống riêng cho cuộc trò chuyện |
 | `shareId` | `NVARCHAR(50)` | ✔️ | `NULL` | Mã chia sẻ công khai (nếu có) |
 | `folderId` | `INT` | ✔️ | `NULL` | FK trỏ đến `Folders(id)` (thư mục phân loại) |
@@ -421,6 +423,25 @@ Lưu trữ duy nhất bản ghi có `id = 1`. Các API key được tự động
 | `details` | `NVARCHAR(MAX)` | ✔️ | `NULL` | Chi tiết thay đổi dạng JSON |
 | `ipAddress` | `NVARCHAR(100)` | ✔️ | `NULL` | Địa chỉ IP của quản trị viên |
 | `createdAt` | `DATETIMEOFFSET`| ❌ | `SYSUTCDATETIME()` | Thời điểm thực hiện (UTC) |
+
+---
+
+### 2.13. `UpgradeRequests` – Yêu cầu nâng cấp gói dịch vụ
+| Tên cột | Kiểu dữ liệu | Null | Mặc định | Mô tả |
+|---|---|:---:|---|---|
+| `id` | `INT IDENTITY(1,1)` | ❌ | - | Khóa chính |
+| `userId` | `INT` | ❌ | - | FK trỏ đến `Users(id)` (ON DELETE CASCADE) |
+| `currentTier` | `NVARCHAR(20)` | ❌ | `'free'` | Gói dịch vụ tại thời điểm gửi yêu cầu |
+| `requestedTier` | `NVARCHAR(20)` | ❌ | - | Gói đăng ký nâng cấp (`'plus'` hoặc `'premium'`) |
+| `billingCycle` | `NVARCHAR(20)` | ❌ | `'monthly'` | Chu kỳ thanh toán (`'monthly'` hoặc `'yearly'`) |
+| `amount` | `INT` | ❌ | `0` | Số tiền tương ứng (VNĐ) |
+| `note` | `NVARCHAR(500)` | ✔️ | `NULL` | Ghi chú / mã giao dịch của người dùng |
+| `status` | `NVARCHAR(20)` | ❌ | `'pending'` | Trạng thái: `'pending'`, `'approved'`, `'rejected'` |
+| `adminNote` | `NVARCHAR(500)` | ✔️ | `NULL` | Phản hồi của Quản trị viên |
+| `reviewedBy` | `INT` | ✔️ | `NULL` | ID của Admin phê duyệt / từ chối |
+| `reviewedAt` | `DATETIMEOFFSET`| ✔️ | `NULL` | Thời điểm phê duyệt / từ chối |
+| `createdAt` | `DATETIMEOFFSET`| ❌ | `SYSUTCDATETIME()` | Thời điểm gửi yêu cầu |
+| `updatedAt` | `DATETIMEOFFSET`| ❌ | `SYSUTCDATETIME()` | Thời điểm cập nhật |
 
 ---
 

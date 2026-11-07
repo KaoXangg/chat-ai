@@ -47,6 +47,26 @@ const User = sequelize.define(
     customDailyTokenLimit: { type: DataTypes.INTEGER, allowNull: true, defaultValue: null },
     // Gói người dùng: "free", "pro", "vip"
     userTier: { type: DataTypes.STRING(20), allowNull: false, defaultValue: "free" },
+    // Bộ nhớ dài hạn cá nhân hóa (JSON array: [{ id, content, createdAt }])
+    memories: {
+      type: DataTypes.TEXT("long"),
+      allowNull: true,
+      defaultValue: null,
+      get() {
+        const raw = this.getDataValue("memories");
+        if (!raw) return [];
+        if (Array.isArray(raw)) return raw;
+        try {
+          const parsed = JSON.parse(raw);
+          return Array.isArray(parsed) ? parsed : [];
+        } catch {
+          return [];
+        }
+      },
+      set(value) {
+        this.setDataValue("memories", Array.isArray(value) && value.length ? JSON.stringify(value) : null);
+      },
+    },
     // Virtual field de giu tuong thich voi frontend (dang dung `_id` kieu Mongo).
     _id: {
       type: DataTypes.VIRTUAL,

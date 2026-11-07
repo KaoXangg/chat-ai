@@ -647,7 +647,10 @@ export default function Dashboard() {
                             {theme.name}
                           </p>
                           <p className="text-[10px] text-zinc-400 font-mono">
-                            {requests.toLocaleString()} yêu cầu
+                            {requests.toLocaleString()} yêu cầu • TB {(statItem?.avgTokensPerRequest || 0).toLocaleString()} tok/req •{" "}
+                            <span className="text-emerald-600 dark:text-emerald-400 font-semibold">
+                              {statItem?.successRate ?? 100}% OK
+                            </span>
                           </p>
                         </div>
                       </div>
@@ -687,6 +690,91 @@ export default function Dashboard() {
           </p>
         </div>
       </div>
+
+      {/* 4B. PHÂN BỔ GÓI DỊCH VỤ (FREE / PLUS / PRO) & LƯU LƯỢNG TOKEN THEO TIER */}
+      {providerData?.tierDistribution && (
+        <div className="p-5 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200/90 dark:border-zinc-800 shadow-xs">
+          <div className="flex flex-wrap items-center justify-between gap-2 pb-4 border-b border-zinc-100 dark:border-zinc-800">
+            <div>
+              <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
+                <Layers size={16} className="text-brand-500" />
+                Phân bổ Người dùng & Lưu lượng Token theo Gói dịch vụ
+              </h2>
+              <p className="text-xs text-zinc-400 mt-0.5">
+                Thống kê tỷ trọng người dùng và mức tiêu thụ tài nguyên AI giữa gói Free, Plus và Pro
+              </p>
+            </div>
+            {providerData.pendingUpgradeRequests > 0 ? (
+              <Link
+                to="/admin/users"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30 text-xs font-semibold hover:bg-amber-500/25 transition-colors"
+              >
+                <span>🔔 {providerData.pendingUpgradeRequests} yêu cầu nâng cấp chờ duyệt</span>
+                <ArrowUpRight size={13} />
+              </Link>
+            ) : (
+              <Link
+                to="/admin/users"
+                className="text-xs font-semibold text-brand-600 dark:text-brand-400 hover:underline flex items-center gap-1"
+              >
+                Quản lý gói người dùng <ArrowUpRight size={13} />
+              </Link>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+            {providerData.tierDistribution.map((item) => {
+              const totalUsersCount = Math.max(1, stats?.totals?.totalUsers || 1);
+              const userPct = Math.round((item.userCount / totalUsersCount) * 100);
+              const totalTierTokens = Math.max(
+                1,
+                providerData.tierDistribution.reduce((acc, c) => acc + (c.totalTokens || 0), 0)
+              );
+              const tokenPct = Math.round(((item.totalTokens || 0) / totalTierTokens) * 100);
+              const badgeColor =
+                item.tier === "premium"
+                  ? "bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30"
+                  : item.tier === "plus"
+                  ? "bg-brand-500/15 text-brand-600 dark:text-brand-400 border-brand-500/30"
+                  : "bg-zinc-200/70 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 border-zinc-300/60 dark:border-zinc-700";
+
+              return (
+                <div
+                  key={item.tier}
+                  className="p-4 rounded-xl bg-zinc-50/70 dark:bg-zinc-800/40 border border-zinc-200/60 dark:border-zinc-800 space-y-3"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold border uppercase ${badgeColor}`}>
+                      {item.label}
+                    </span>
+                    <span className="text-xs font-mono font-semibold text-zinc-700 dark:text-zinc-200">
+                      {item.userCount.toLocaleString()} người dùng ({userPct}%)
+                    </span>
+                  </div>
+                  <div className="flex items-baseline justify-between">
+                    <span className="text-[11px] text-zinc-400">Tổng Token tiêu thụ:</span>
+                    <span className="text-sm font-mono font-bold text-zinc-900 dark:text-zinc-100">
+                      {(item.totalTokens || 0).toLocaleString()} <span className="text-[10px] font-normal text-zinc-400">({tokenPct}%)</span>
+                    </span>
+                  </div>
+                  <div className="w-full h-1.5 rounded-full bg-zinc-200 dark:bg-zinc-700 overflow-hidden">
+                    <div
+                      className={`h-full rounded-full transition-all duration-500 ${
+                        item.tier === "premium"
+                          ? "bg-amber-500"
+                          : item.tier === "plus"
+                          ? "bg-brand-500"
+                          : "bg-zinc-500"
+                      }`}
+                      style={{ width: `${Math.max(4, tokenPct)}%` }}
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* 5. LOWER SPLIT SECTION: TOP POWER USERS & COSTS/AUDIT TAB */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">

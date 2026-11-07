@@ -123,6 +123,32 @@ export function normalizeTier(tier) {
   return "free";
 }
 
+export function getTierFeatures(tier) {
+  const t = normalizeTier(tier);
+  if (t === "premium" || t === "plus") {
+    return {
+      tier: t,
+      maxImagesPerMessage: 4,
+      maxConversations: Infinity,
+      allowWebSearch: true,
+      allowReasoningModels: true,
+    };
+  }
+  return {
+    tier: "free",
+    maxImagesPerMessage: 1,
+    maxConversations: 50,
+    allowWebSearch: false,
+    allowReasoningModels: false,
+  };
+}
+
+export function isExplicitFreeTier(user) {
+  if (!user || user.role === "admin") return false;
+  if (user.userTier === undefined || user.userTier === null) return false;
+  return normalizeTier(user.userTier) === "free";
+}
+
 export function getUserDailyLimit(user) {
   if (user?.customDailyTokenLimit !== null && user?.customDailyTokenLimit !== undefined && user.customDailyTokenLimit > 0) {
     return Number(user.customDailyTokenLimit);

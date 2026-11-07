@@ -133,9 +133,12 @@ export default function Pricing() {
 
   const [yearly, setYearly] = useState(false);
   const [upgradingTo, setUpgradingTo] = useState(null);
+  const [upgradeNote, setUpgradeNote] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [currentTier, setCurrentTier] = useState("free");
   const [userQuota, setUserQuota] = useState(null);
+  const [pendingRequest, setPendingRequest] = useState(null);
+  const [cancelingRequest, setCancelingRequest] = useState(false);
   const [openFaq, setOpenFaq] = useState(null);
 
   // Lấy quota hiện tại của user nếu đã đăng nhập
@@ -147,8 +150,9 @@ export default function Pricing() {
 
       api.get("/usage")
         .then((res) => {
-          if (res.data.success && res.data.data.quota) {
-            setUserQuota(res.data.data.quota);
+          if (res.data.success && res.data.data) {
+            if (res.data.data.quota) setUserQuota(res.data.data.quota);
+            setPendingRequest(res.data.data.pendingUpgradeRequest || null);
           }
         })
         .catch(() => {});
@@ -164,27 +168,61 @@ export default function Pricing() {
       toast.info("Bạn hiện đang sử dụng gói này.");
       return;
     }
+    setUpgradeNote("");
     setUpgradingTo(planId);
+  };
+
+  const handleCancelPendingRequest = async () => {
+    try {
+      setCancelingRequest(true);
+      const res = await api.delete("/usage/upgrade-request");
+      if (res.data.success) {
+        setPendingRequest(null);
+        toast.success("Đã hủy yêu cầu nâng cấp đang chờ duyệt.");
+      }
+    } catch {
+      toast.error("Không thể hủy yêu cầu lúc này.");
+    } finally {
+      setCancelingRequest(false);
+    }
   };
 
   const handleConfirmUpgrade = async () => {
     if (!upgradingTo) return;
     try {
       setIsSubmitting(true);
-      const res = await api.post("/usage/upgrade", { tier: upgradingTo });
+      const res = await api.post("/usage/upgrade", {
+        tier: upgradingTo,
+        billingCycle: yearly ? "yearly" : "monthly",
+        note: upgradeNote.trim() || undefined,
+      });
       if (res.data.success) {
-        toast.success(`🎉 Chúc mừng! Bạn đã chuyển sang gói ${upgradingTo.toUpperCase()} thành công.`);
-        setCurrentTier(upgradingTo);
-        if (updateUser) {
-          updateUser({ ...user, userTier: upgradingTo });
+        if (res.data.pending) {
+          toast.success(
+            res.data.message ||
+              `Đã gửi yêu cầu nâng cấp lên gói ${upgradingTo.toUpperCase()}! Vui lòng chờ Quản trị viên phê duyệt.`
+          );
+          if (res.data.data?.upgradeRequest) {
+            setPendingRequest(res.data.data.upgradeRequest);
+          }
+          setUpgradingTo(null);
+          setUpgradeNote("");
+        } else {
+          toast.success(`🎉 Chúc mừng! Bạn đã chuyển sang gói ${upgradingTo.toUpperCase()} thành công.`);
+          setCurrentTier(upgradingTo);
+          setPendingRequest(null);
+          if (updateUser) {
+            updateUser({ ...user, userTier: upgradingTo });
+          }
+          setUpgradingTo(null);
+          setUpgradeNote("");
+          setTimeout(() => {
+            navigate("/chat");
+          }, 1200);
         }
-        setUpgradingTo(null);
-        setTimeout(() => {
-          navigate("/chat");
-        }, 1200);
       }
     } catch {
-      toast.error("Có lỗi xảy ra khi cập nhật gói. Vui lòng thử lại sau.");
+      toast.error("Có lỗi xảy ra khi gửi yêu cầu cập nhật gói. Vui lòng thử lại sau.");
     } finally {
       setIsSubmitting(false);
     }
@@ -292,6 +330,38 @@ export default function Pricing() {
 
       {/* 3. 3 PRICING CARDS */}
       <section className="max-w-7xl mx-auto px-4 sm:px-6 pb-20 w-full">
+        {pendingRequest && (
+          <div className="mb-8 p-4 sm:p-5 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex items-start gap-3">
+              <div className="p-2.5 rounded-xl bg-amber-500/20 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5">
+                <Clock size={18} />
+              </div>
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-xs sm:text-sm font-bold text-amber-800 dark:text-amber-200">
+                    Yêu cầu nâng cấp gói {String(pendingRequest.requestedTier || "").toUpperCase()} đang chờ duyệt
+                  </span>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-700 dark:text-amber-300">
+                    {pendingRequest.billingCycle === "yearly" ? "Chu kỳ Năm" : "Chu kỳ Tháng"} • {formatVND(pendingRequest.amount || 0)}đ
+                  </span>
+                </div>
+                <p className="text-xs text-amber-700/80 dark:text-amber-300/80 mt-1">
+                  Quản trị viên sẽ kiểm tra và kích hoạt gói dịch vụ của bạn trong thời gian sớm nhất.
+                  {pendingRequest.note ? ` Ghi chú: "${pendingRequest.note}"` : ""}
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={handleCancelPendingRequest}
+              disabled={cancelingRequest}
+              className="self-end sm:self-center shrink-0 px-3.5 py-2 rounded-xl border border-amber-500/30 hover:bg-amber-500/15 text-xs font-semibold text-amber-800 dark:text-amber-200 transition-colors"
+            >
+              {cancelingRequest ? "Đang hủy..." : "Hủy yêu cầu"}
+            </button>
+          </div>
+        )}
+
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 lg:gap-8 items-stretch">
           {PLANS.map((plan) => {
             const isCurrent = user && currentTier === plan.id;
@@ -577,10 +647,14 @@ export default function Pricing() {
                 </div>
                 <div>
                   <h3 className="text-base font-bold text-zinc-900 dark:text-zinc-100">
-                    Xác nhận đổi sang gói {upgradingTo.toUpperCase()}
+                    {upgradingTo === "free"
+                      ? "Xác nhận chuyển về gói FREE"
+                      : `Đăng ký nâng cấp gói ${upgradingTo.toUpperCase()}`}
                   </h3>
                   <p className="text-xs text-zinc-400 mt-0.5">
-                    Hạn mức token mới sẽ được kích hoạt ngay lập tức
+                    {upgradingTo === "free" || user?.role === "admin"
+                      ? "Hạn mức token mới sẽ được áp dụng ngay lập tức"
+                      : "Gửi yêu cầu nâng cấp để Quản trị viên xác nhận & kích hoạt"}
                   </p>
                 </div>
               </div>
@@ -589,7 +663,18 @@ export default function Pricing() {
                 <div className="flex items-center justify-between">
                   <span className="text-zinc-500">Gói được chọn:</span>
                   <span className="font-bold uppercase tracking-wider text-brand-600 dark:text-brand-400">
-                    {upgradingTo}
+                    {upgradingTo} ({yearly ? "Theo năm" : "Theo tháng"})
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-zinc-500">Chi phí:</span>
+                  <span className="font-mono font-bold text-zinc-800 dark:text-zinc-200">
+                    {formatVND(
+                      yearly
+                        ? PLANS.find((p) => p.id === upgradingTo)?.priceYearly || 0
+                        : PLANS.find((p) => p.id === upgradingTo)?.priceMonthly || 0
+                    )}
+                    đ
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
@@ -599,12 +684,30 @@ export default function Pricing() {
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-zinc-500">Hiệu lực:</span>
+                  <span className="text-zinc-500">Trạng thái kích hoạt:</span>
                   <span className="font-medium text-emerald-600 dark:text-emerald-400">
-                    Kích hoạt ngay • Reset lúc 00:00 hàng ngày
+                    {upgradingTo === "free" || user?.role === "admin"
+                      ? "Kích hoạt ngay • Reset lúc 00:00"
+                      : "Chờ Quản trị viên phê duyệt"}
                   </span>
                 </div>
               </div>
+
+              {upgradingTo !== "free" && user?.role !== "admin" && (
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-300">
+                    Ghi chú / Mã giao dịch thanh toán (tuỳ chọn)
+                  </label>
+                  <textarea
+                    rows={2}
+                    value={upgradeNote}
+                    onChange={(e) => setUpgradeNote(e.target.value)}
+                    maxLength={500}
+                    placeholder="Nhập mã chuyển khoản hoặc ghi chú gửi Quản trị viên..."
+                    className="w-full px-3 py-2 text-xs rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-950 text-zinc-800 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-brand-500 resize-none"
+                  />
+                </div>
+              )}
 
               <div className="flex items-center gap-2.5 justify-end pt-2">
                 <button
@@ -624,11 +727,15 @@ export default function Pricing() {
                   {isSubmitting ? (
                     <>
                       <Loader2 size={14} className="animate-spin" />
-                      <span>Đang kích hoạt...</span>
+                      <span>Đang xử lý...</span>
                     </>
                   ) : (
                     <>
-                      <span>Xác nhận & Bắt đầu</span>
+                      <span>
+                        {upgradingTo === "free" || user?.role === "admin"
+                          ? "Xác nhận đổi gói"
+                          : "Gửi yêu cầu nâng cấp"}
+                      </span>
                       <ArrowRight size={14} />
                     </>
                   )}

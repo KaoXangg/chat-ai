@@ -1,10 +1,11 @@
 import express from "express";
+import Groq, { toFile } from "groq-sdk";
 import { Op } from "sequelize";
 import { sequelize } from "../config/db.js";
 import Conversation from "../models/Conversation.js";
 import Message from "../models/Message.js";
 import AIModel from "../models/AIModel.js";
-import { getExhaustedModels, recordUsage, getTzLabel, getUserTodayQuota } from "../utils/quota.js";
+import { getExhaustedModels, recordUsage, getTzLabel, getUserTodayQuota, getTierFeatures, isExplicitFreeTier } from "../utils/quota.js";
 import { authMiddleware } from "../middleware/auth.js";
 import { chatLimiter } from "../middleware/rateLimit.js";
 import { streamWithFallback, generateConversationTitle, AI_ERROR_CODES } from "../providers/aiRouter.js";
@@ -14,6 +15,8 @@ import { serializeChat, withDatabaseLocks, userChatLock, conversationLock } from
 import { validateIdParam } from "../utils/validation.js";
 import { getSystemSettings } from "../models/SystemSetting.js";
 import { checkQuotaMiddleware, assertUserQuota } from "../middleware/checkQuota.js";
+import { checkContentViolation } from "../utils/moderation.js";
+import { extractDocumentContent } from "../utils/documentParser.js";
 
 const router = express.Router();
 router.use(authMiddleware);
@@ -82,7 +85,9 @@ function normalizeImages(image, images) {
   return [];
 }
 
-async function buildHistory(conversation, extraContext = "", aiLanguage = "auto", lastUserMessageId = null, customInstruction = "") {
+const MAX_HISTORY_IMAGE_MESSAGES = 4;
+
+async function buildHistory(conversation, extraContext = "", aiLanguage = "auto", lastUserMessageId = null, customInstruction = "", userMemories = []) {
   const conversationId = typeof conversation === "object" ? conversation.id : conversation;
   const conversationPrompt = typeof conversation === "object" ? conversation.systemPrompt : "";
   const effectivePrompt = (conversationPrompt || customInstruction || "").trim();
@@ -94,14 +99,32 @@ async function buildHistory(conversation, extraContext = "", aiLanguage = "auto"
   });
   history.reverse();
 
+  // Chỉ giữ lại payload ảnh Base64 cho tối đa 4 tin nhắn có ảnh gần nhất để tránh tốn RAM/token khi hội thoại dài
+  const imageMsgIndices = [];
+  history.forEach((m, idx) => {
+    const hasImg = (Array.isArray(m.images) && m.images.length > 0) || Boolean(m.imageBase64);
+    if (hasImg) imageMsgIndices.push(idx);
+  });
+  const allowedImageIndices = new Set(imageMsgIndices.slice(-MAX_HISTORY_IMAGE_MESSAGES));
+
   // Ngôn ngữ trả lời do người dùng chọn (Users.aiLanguage); "auto" thì AI tự theo ngôn ngữ tin nhắn.
   const customSection = effectivePrompt ? `Custom Instructions / User Persona:\n${effectivePrompt}` : null;
-  const systemContent = [SYSTEM_PROMPT, customSection, aiLanguageDirective(aiLanguage), extraContext].filter(Boolean).join("\n\n");
+  const validMemories = Array.isArray(userMemories)
+    ? userMemories.filter((m) => m && typeof m.content === "string" && m.content.trim())
+    : [];
+  const memorySection = validMemories.length
+    ? "User Memories (Key facts & preferences to remember about this user):\n" +
+      validMemories.map((m, idx) => `${idx + 1}. ${m.content.trim()}`).join("\n")
+    : null;
+  const systemContent = [SYSTEM_PROMPT, customSection, memorySection, aiLanguageDirective(aiLanguage), extraContext].filter(Boolean).join("\n\n");
 
   return [
     { role: "system", content: systemContent },
-    ...history.map((m) => {
-      const imgs = m.images?.length ? m.images : m.imageBase64 ? [{ mimeType: m.imageMimeType, data: m.imageBase64 }] : [];
+    ...history.map((m, idx) => {
+      const keepImages = allowedImageIndices.has(idx);
+      const imgs = keepImages
+        ? (m.images?.length ? m.images : m.imageBase64 ? [{ mimeType: m.imageMimeType, data: m.imageBase64 }] : [])
+        : [];
       return {
         role: m.role,
         content: m.content,
@@ -157,6 +180,7 @@ async function runStream(req, res, conversation, messagesForAI, { webSources = [
     const catalog = await loadModelCatalog();
     // Model mà người dùng đã dùng hết hạn mức token hôm nay sẽ bị router bỏ qua.
     const excludedModels = await getExhaustedModels(req.user.id, catalog, req.user.userTier);
+    const streamStartedAt = Date.now();
     for await (const item of streamWithFallback(messagesForAI, conversation.provider, conversation.model, { catalog, excludedModels, signal })) {
       usedProvider = item.provider;
       usedModel = item.model;
@@ -167,6 +191,11 @@ async function runStream(req, res, conversation, messagesForAI, { webSources = [
       fullResponse += item.token;
       sseSend(res, { token: item.token });
     }
+    const durationMs = Math.max(1, Date.now() - streamStartedAt);
+    const completionTokens = usage?.completionTokens || Math.max(1, Math.ceil(fullResponse.length / 4));
+    const totalTokens = usage?.totalTokens || ((usage?.promptTokens || 0) + completionTokens);
+    const tokensPerSec = Number((completionTokens / Math.max(0.05, durationMs / 1000)).toFixed(1));
+    const telemetry = { durationMs, completionTokens, totalTokens, tokensPerSec };
 
     signal.throwIfAborted();
     assistantMessage = await sequelize.transaction(async (transaction) => {
@@ -198,6 +227,7 @@ async function runStream(req, res, conversation, messagesForAI, { webSources = [
       provider: usedProvider,
       model: usedModel,
       sources: assistantMessage.sources,
+      telemetry,
       replacedMessageId: replaceMessageId ? String(replaceMessageId) : undefined,
       replacedAfterId: replaceMessageId ? replaceAfterId : undefined,
     });
@@ -238,6 +268,179 @@ async function runStream(req, res, conversation, messagesForAI, { webSources = [
   }
 }
 
+router.post("/extract-document", chatLimiter, async (req, res) => {
+  try {
+    const { fileName, mimeType, base64Data } = req.body || {};
+    const result = extractDocumentContent({ fileName, mimeType, base64Data });
+    res.json({ success: true, data: result });
+  } catch (err) {
+    return jsonError(res, err.status || 400, err.code || "INVALID_DOCUMENT", err.message || "Không thể đọc tài liệu.");
+  }
+});
+
+router.post("/transcribe", chatLimiter, async (req, res) => {
+  try {
+    const { audioBase64, mimeType = "audio/webm", language } = req.body || {};
+    if (typeof audioBase64 !== "string" || !audioBase64.trim()) {
+      return jsonError(res, 400, "INVALID_AUDIO", "Dữ liệu âm thanh không hợp lệ.");
+    }
+    const cleanBase64 = audioBase64.includes(",") ? audioBase64.split(",")[1] : audioBase64.trim();
+    const audioBuffer = Buffer.from(cleanBase64, "base64");
+    if (!audioBuffer.length || audioBuffer.length > 15 * 1024 * 1024) {
+      return jsonError(res, 400, "INVALID_AUDIO", "File ghi âm rỗng hoặc vượt quá giới hạn 15MB.");
+    }
+
+    const settings = await getSystemSettings();
+    const groqKey = settings?.groqApiKey || process.env.GROQ_API_KEY;
+    if (!groqKey) {
+      return jsonError(res, 503, "STT_NOT_CONFIGURED", "Chưa cấu hình GROQ_API_KEY cho tính năng nhận diện giọng nói.");
+    }
+
+    const groq = new Groq({ apiKey: groqKey });
+    const ext = mimeType.includes("mp4") || mimeType.includes("m4a")
+      ? "m4a"
+      : mimeType.includes("ogg")
+      ? "ogg"
+      : mimeType.includes("wav")
+      ? "wav"
+      : "webm";
+    const file = await toFile(audioBuffer, `voice.${ext}`, { type: mimeType });
+    const transcription = await groq.audio.transcriptions.create({
+      file,
+      model: "whisper-large-v3-turbo",
+      ...(language && language !== "auto" ? { language: String(language).slice(0, 5) } : {}),
+      response_format: "json",
+    });
+
+    res.json({
+      success: true,
+      data: {
+        text: (transcription?.text || "").trim(),
+      },
+    });
+  } catch (err) {
+    console.error("[Speech-to-Text] Lỗi:", err.message);
+    return jsonError(res, 502, "TRANSCRIPTION_FAILED", "Không thể chuyển giọng nói thành văn bản lúc này.");
+  }
+});
+
+// ---------- CHẾ ĐỘ SO SÁNH 2 MÔ HÌNH SONG SONG (SPLIT MODEL ARENA) ----------
+router.post("/arena-stream", chatLimiter, async (req, res) => {
+  const signal = req.chatSignal;
+  try {
+    const { content, provider = "groq", model = "openai/gpt-oss-20b" } = req.body || {};
+    if (typeof content !== "string" || !content.trim()) {
+      return jsonError(res, 400, "EMPTY_MESSAGE", "Nội dung câu hỏi không được để trống.");
+    }
+    if (content.length > MAX_MESSAGE_LENGTH) {
+      return jsonError(res, 400, "MESSAGE_TOO_LONG", `Tin nhắn quá dài (tối đa ${MAX_MESSAGE_LENGTH} ký tự).`);
+    }
+
+    const matchedKeyword = await checkContentViolation(content);
+    if (matchedKeyword) {
+      return jsonError(
+        res,
+        400,
+        "CONTENT_VIOLATION",
+        `Tin nhắn chứa từ khóa bị giới hạn bởi chính sách an toàn ("${matchedKeyword}").`
+      );
+    }
+
+    startSSE(res);
+    const catalog = await loadModelCatalog();
+    const excludedModels = await getExhaustedModels(req.user.id, catalog, req.user.userTier);
+    const messagesForAI = [
+      { role: "system", content: [SYSTEM_PROMPT, aiLanguageDirective(req.user?.aiLanguage)].filter(Boolean).join("\n\n") },
+      { role: "user", content: content.trim() },
+    ];
+
+    let fullResponse = "";
+    let usedProvider = provider;
+    let usedModel = model;
+    let usage = null;
+    const streamStartedAt = Date.now();
+
+    for await (const item of streamWithFallback(messagesForAI, provider, model, { catalog, excludedModels, signal })) {
+      usedProvider = item.provider;
+      usedModel = item.model;
+      if (item.usage) {
+        usage = item.usage;
+        continue;
+      }
+      fullResponse += item.token;
+      sseSend(res, { token: item.token });
+    }
+
+    const durationMs = Math.max(1, Date.now() - streamStartedAt);
+    const completionTokens = usage?.completionTokens || Math.max(1, Math.ceil(fullResponse.length / 4));
+    const totalTokens = usage?.totalTokens || ((usage?.promptTokens || 0) + completionTokens);
+    const tokensPerSec = Number((completionTokens / Math.max(0.05, durationMs / 1000)).toFixed(1));
+    const telemetry = { durationMs, completionTokens, totalTokens, tokensPerSec };
+
+    await recordUsage({
+      userId: req.user.id,
+      provider: usedProvider,
+      modelId: usedModel,
+      usage: usage || { promptTokens: Math.ceil(content.length / 4), completionTokens, estimated: true },
+    });
+
+    sseSend(res, {
+      done: true,
+      provider: usedProvider,
+      model: usedModel,
+      telemetry,
+    });
+  } catch (err) {
+    if (signal?.aborted || err.name === "AbortError") return;
+    const code = STREAM_ERROR_MESSAGES[err.code] ? err.code : AI_ERROR_CODES.PROVIDER_UNAVAILABLE;
+    sseSend(res, { error: STREAM_ERROR_MESSAGES[code] || "Không thể kết nối mô hình.", code });
+  } finally {
+    if (!res.destroyed && !res.writableEnded) res.end();
+  }
+});
+
+router.post("/:conversationId/save-arena", async (req, res, next) => {
+  try {
+    const conversation = await findUserConversation(req.params.conversationId, req.user.id);
+    if (!conversation) return jsonError(res, 404, "NOT_FOUND", "Không tìm thấy cuộc trò chuyện.");
+
+    const { prompt, answer, provider, model } = req.body || {};
+    if (typeof prompt !== "string" || !prompt.trim() || typeof answer !== "string" || !answer.trim()) {
+      return jsonError(res, 400, "INVALID_INPUT", "Thiếu nội dung câu hỏi hoặc câu trả lời.");
+    }
+
+    const { userMsg, assistantMsg } = await sequelize.transaction(async (transaction) => {
+      const uMsg = await Message.create(
+        {
+          conversationId: conversation.id,
+          role: "user",
+          content: prompt.trim(),
+        },
+        { transaction }
+      );
+      const aMsg = await Message.create(
+        {
+          conversationId: conversation.id,
+          role: "assistant",
+          content: answer.trim(),
+          provider: provider || conversation.provider,
+          model: model || conversation.model,
+        },
+        { transaction }
+      );
+      await touchConversation(conversation, transaction);
+      return { userMsg: uMsg, assistantMsg: aMsg };
+    });
+
+    res.json({
+      success: true,
+      data: { userMessage: userMsg, assistantMessage: assistantMsg },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.post("/:conversationId/stream", chatLimiter, async (req, res, next) => {
   try {
     const { content, image, images, useWebSearch, requestId } = req.body;
@@ -255,20 +458,34 @@ router.post("/:conversationId/stream", chatLimiter, async (req, res, next) => {
     }
 
     // Bộ lọc từ khóa cấm / Content Moderation (Bảo vệ hệ thống & Tiết kiệm token)
-    const systemSettings = await getSystemSettings();
-    if (systemSettings.blockedKeywords) {
-      const keywords = systemSettings.blockedKeywords
-        .split(",")
-        .map((k) => k.trim().toLowerCase())
-        .filter(Boolean);
-      const lowerText = content.toLowerCase();
-      const matched = keywords.find((kw) => kw.length > 1 && lowerText.includes(kw));
-      if (matched) {
+    const matchedKeyword = await checkContentViolation(content);
+    if (matchedKeyword) {
+      return jsonError(
+        res,
+        400,
+        "CONTENT_VIOLATION",
+        `Tin nhắn chứa từ khóa bị giới hạn bởi chính sách an toàn của hệ thống ("${matchedKeyword}"). Vui lòng chỉnh sửa lại câu hỏi.`
+      );
+    }
+
+    // Kiểm tra giới hạn tính năng theo gói dịch vụ (Free tier)
+    if (isExplicitFreeTier(req.user)) {
+      const tierFeatures = getTierFeatures(req.user.userTier);
+      if (useWebSearch && !tierFeatures.allowWebSearch) {
         return jsonError(
-          res, 
-          400, 
-          "CONTENT_VIOLATION", 
-          `Tin nhắn chứa từ khóa bị giới hạn bởi chính sách an toàn của hệ thống ("${matched}"). Vui lòng chỉnh sửa lại câu hỏi.`
+          res,
+          403,
+          "TIER_LIMIT_EXCEEDED",
+          "Tính năng Tìm kiếm Web thời gian thực chỉ dành cho gói Plus và Premium. Vui lòng nâng cấp gói để sử dụng."
+        );
+      }
+      const normalizedImgCount = normalizeImages(image, images).length;
+      if (normalizedImgCount > tierFeatures.maxImagesPerMessage) {
+        return jsonError(
+          res,
+          403,
+          "TIER_LIMIT_EXCEEDED",
+          `Gói Free chỉ hỗ trợ phân tích tối đa ${tierFeatures.maxImagesPerMessage} ảnh mỗi tin nhắn. Hãy nâng cấp lên gói Plus hoặc Premium để gửi tối đa 4 ảnh.`
         );
       }
     }
@@ -350,7 +567,7 @@ router.post("/:conversationId/stream", chatLimiter, async (req, res, next) => {
           await touchConversation(conversation);
         }
         const { webSources, webContext } = await getWebContext(useWebSearch, content.trim(), req.chatSignal);
-        return { webSources, messages: await buildHistory(conversation, webContext, req.user.aiLanguage, userMessage.id, req.user.systemPrompt) };
+        return { webSources, messages: await buildHistory(conversation, webContext, req.user.aiLanguage, userMessage.id, req.user.systemPrompt, req.user.memories) };
       }, { userMessageId: userMessage.id, replaceMessageId: replacement?.id, replaceAfterId: userMessage.id });
     });
   } catch (err) {
@@ -374,7 +591,7 @@ router.post("/:conversationId/regenerate", chatLimiter, checkQuotaMiddleware, se
     const lastUserMessage = await Message.findOne({ where: { conversationId: conversation.id, role: "user" }, order: [["createdAt", "DESC"], ["id", "DESC"]] });
     if (!lastUserMessage) return jsonError(res, 400, "EMPTY_MESSAGE", "Không có tin nhắn để tạo lại câu trả lời.");
     const replaceMessageId = lastMessage?.role === "assistant" && lastMessage.id > lastUserMessage.id ? lastMessage.id : null;
-    const messagesForAI = await buildHistory(conversation, "", req.user.aiLanguage, lastUserMessage.id, req.user.systemPrompt);
+    const messagesForAI = await buildHistory(conversation, "", req.user.aiLanguage, lastUserMessage.id, req.user.systemPrompt, req.user.memories);
     await runStream(req, res, conversation, messagesForAI, { replaceMessageId, replaceAfterId: lastUserMessage.id });
   } catch (err) {
     next(err);
@@ -394,6 +611,29 @@ router.post("/:conversationId/edit/:messageId", chatLimiter, checkQuotaMiddlewar
     }
     if (content.length > MAX_MESSAGE_LENGTH) {
       return jsonError(res, 400, "MESSAGE_TOO_LONG", `Tin nhắn quá dài (tối đa ${MAX_MESSAGE_LENGTH} ký tự).`);
+    }
+
+    // Bộ lọc từ khóa cấm cũng áp dụng cho nhánh Sửa tin nhắn (chống lách kiểm duyệt)
+    const matchedKeyword = await checkContentViolation(content);
+    if (matchedKeyword) {
+      return jsonError(
+        res,
+        400,
+        "CONTENT_VIOLATION",
+        `Tin nhắn chứa từ khóa bị giới hạn bởi chính sách an toàn của hệ thống ("${matchedKeyword}"). Vui lòng chỉnh sửa lại câu hỏi.`
+      );
+    }
+
+    if (isExplicitFreeTier(req.user) && req.body.useWebSearch) {
+      const tierFeatures = getTierFeatures(req.user.userTier);
+      if (!tierFeatures.allowWebSearch) {
+        return jsonError(
+          res,
+          403,
+          "TIER_LIMIT_EXCEEDED",
+          "Tính năng Tìm kiếm Web thời gian thực chỉ dành cho gói Plus và Premium. Vui lòng nâng cấp gói để sử dụng."
+        );
+      }
     }
 
     const conversation = await Conversation.findOne({ where: { id: req.params.conversationId, userId: req.user.id } });
@@ -418,7 +658,7 @@ router.post("/:conversationId/edit/:messageId", chatLimiter, checkQuotaMiddlewar
     req.chatMutation = { persisted: true, userMessageId: String(target.id) };
     await runStream(req, res, conversation, async () => {
       const { webSources, webContext } = await getWebContext(req.body.useWebSearch, content, req.chatSignal);
-      return { webSources, messages: await buildHistory(conversation, webContext, req.user.aiLanguage, target.id, req.user.systemPrompt) };
+      return { webSources, messages: await buildHistory(conversation, webContext, req.user.aiLanguage, target.id, req.user.systemPrompt, req.user.memories) };
     }, { userMessageId: target.id });
   } catch (err) {
     next(err);

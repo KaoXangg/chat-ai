@@ -5,7 +5,7 @@ import rehypeKatex from "rehype-katex";
 import "katex/dist/katex.min.css";
 import { PrismLight as SyntaxHighlighter } from "react-syntax-highlighter";
 import { oneDark, oneLight } from "react-syntax-highlighter/dist/esm/styles/prism";
-import { Copy, RotateCcw, ThumbsUp, ThumbsDown, Check, X, ChevronLeft, ChevronRight, Pencil, AlertTriangle, ImageOff, Volume2, VolumeX, Eye, Code2, Maximize2, GitFork } from "lucide-react";
+import { Copy, RotateCcw, ThumbsUp, ThumbsDown, Check, X, ChevronLeft, ChevronRight, ChevronDown, Pencil, AlertTriangle, ImageOff, Volume2, VolumeX, Eye, Code2, Maximize2, GitFork, Download, Hash, Globe, Sparkles, Zap, Clock, PanelRightOpen, Brain, Bookmark } from "lucide-react";
 import CodePreviewModal, { preparePreviewDoc } from "./CodePreviewModal.jsx";
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
@@ -185,12 +185,13 @@ function CodeBlock({ language, code }) {
   const { t } = useI18n();
   const { theme } = useTheme();
   const [copied, setCopied] = useState(false);
-  const [activeTab, setActiveTab] = useState("code"); // "code" | "preview"
+  const [showLineNumbers, setShowLineNumbers] = useState(false);
+  const langLower = (language || "").toLowerCase();
+  const [activeTab, setActiveTab] = useState(langLower === "mermaid" ? "preview" : "code"); // "code" | "preview"
   const [modalOpen, setModalOpen] = useState(false);
 
-  const langLower = (language || "").toLowerCase();
   const isPreviewable =
-    ["html", "htm", "markup", "svg", "xml"].includes(langLower) ||
+    ["html", "htm", "markup", "svg", "xml", "mermaid"].includes(langLower) ||
     (typeof code === "string" &&
       (code.includes("<!DOCTYPE html") ||
         code.includes("<html") ||
@@ -210,16 +211,60 @@ function CodeBlock({ language, code }) {
     }
   };
 
+  const downloadFile = () => {
+    const extMap = {
+      javascript: "js",
+      typescript: "ts",
+      python: "py",
+      csharp: "cs",
+      markdown: "md",
+      mermaid: "mmd",
+      markup: "html",
+    };
+    const ext = extMap[langLower] || langLower || "txt";
+    const blob = new Blob([code || ""], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `snippet-${Date.now()}.${ext}`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleOpenCanvas = () => {
+    if (typeof window !== "undefined" && window.innerWidth >= 1024) {
+      window.dispatchEvent(
+        new CustomEvent("open-artifact-panel", {
+          detail: { code, language: language || "html" },
+        })
+      );
+    } else {
+      setModalOpen(true);
+    }
+  };
+
   return (
     <>
       <div
         data-copy-code={code}
         dir="ltr"
-        className="my-4 rounded-xl overflow-hidden border border-edge-light dark:border-edge-dark bg-[#fafafa] dark:bg-[#282c34] max-w-full shadow-xs"
+        className="my-4 rounded-xl overflow-hidden border border-edge-light dark:border-edge-dark bg-[#fafafa] dark:bg-[#1e2128] max-w-full shadow-xs"
       >
-        <div className="flex items-center justify-between px-3 py-2 bg-black/5 dark:bg-white/5 text-xs text-zinc-600 dark:text-zinc-300">
-          <div className="flex items-center gap-2">
-            <span className="font-mono font-medium">{language || "code"}</span>
+        <div
+          data-copy-ignore="true"
+          className="flex items-center justify-between px-3 py-2 bg-black/[0.04] dark:bg-white/[0.05] border-b border-black/[0.05] dark:border-white/[0.06] text-xs text-zinc-600 dark:text-zinc-300"
+        >
+          <div className="flex items-center gap-2.5">
+            <span className="hidden sm:inline-flex items-center gap-1.5 me-0.5" aria-hidden="true">
+              <span className="w-2.5 h-2.5 rounded-full bg-[#ff5f56]/85" />
+              <span className="w-2.5 h-2.5 rounded-full bg-[#ffbd2e]/85" />
+              <span className="w-2.5 h-2.5 rounded-full bg-[#27c93f]/85" />
+            </span>
+            <span className="font-mono font-semibold text-[11px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-black/[0.06] dark:bg-white/[0.08] text-zinc-700 dark:text-zinc-200">
+              {language || "code"}
+            </span>
             {isPreviewable && (
               <div className="flex items-center gap-1 p-0.5 rounded-lg bg-black/5 dark:bg-white/10 text-[11px]">
                 <button
@@ -250,18 +295,54 @@ function CodeBlock({ language, code }) {
             )}
           </div>
 
-          <div className="flex items-center gap-2">
-            {isPreviewable && (
+          <div className="flex items-center gap-1.5">
+            {activeTab === "code" && (
               <button
                 type="button"
-                onClick={() => setModalOpen(true)}
-                title="Mở rộng xem trước (Responsive)"
-                className="flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-black/5 dark:hover:bg-white/10 text-zinc-600 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-white transition-colors"
+                onClick={() => setShowLineNumbers((v) => !v)}
+                title="Bật/tắt đánh số dòng"
+                aria-label="Bật/tắt đánh số dòng"
+                className={clsx(
+                  "flex items-center gap-1 px-1.5 py-1 rounded-lg transition-colors",
+                  showLineNumbers
+                    ? "bg-brand-500/15 text-brand-600 dark:text-brand-300 font-medium"
+                    : "hover:bg-black/5 dark:hover:bg-white/10 text-zinc-500 dark:text-zinc-400"
+                )}
               >
-                <Maximize2 size={13} />
-                <span className="hidden sm:inline">Phóng to</span>
+                <Hash size={13} />
               </button>
             )}
+            {isPreviewable && (
+              <>
+                <button
+                  type="button"
+                  onClick={handleOpenCanvas}
+                  title="Mở khung Artifact Canvas bên cạnh"
+                  className="flex items-center gap-1 px-2 py-1 rounded-lg bg-brand-500/10 hover:bg-brand-500/20 text-brand-600 dark:text-brand-300 font-medium transition-colors"
+                >
+                  <PanelRightOpen size={13} />
+                  <span className="hidden sm:inline">Canvas</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setModalOpen(true)}
+                  title="Phóng to toàn màn hình"
+                  aria-label="Phóng to toàn màn hình"
+                  className="hidden sm:flex items-center gap-1 p-1 rounded-lg hover:bg-black/5 dark:hover:bg-white/10 text-zinc-600 dark:text-zinc-300 transition-colors"
+                >
+                  <Maximize2 size={13} />
+                </button>
+              </>
+            )}
+            <button
+              type="button"
+              onClick={downloadFile}
+              title="Tải tệp mã nguồn"
+              aria-label="Tải tệp mã nguồn"
+              className="flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-black/5 dark:hover:bg-white/10 text-zinc-600 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-white transition-colors"
+            >
+              <Download size={13} />
+            </button>
             <button
               onClick={copy}
               aria-label={t("msg.codeCopyAria")}
@@ -286,6 +367,7 @@ function CodeBlock({ language, code }) {
           <SyntaxHighlighter
             language={language || "text"}
             style={theme === "dark" ? oneDark : oneLight}
+            showLineNumbers={showLineNumbers}
             customStyle={{ margin: 0, borderRadius: 0, background: "transparent", fontSize: "13px", padding: "1rem" }}
           >
             {code}
@@ -302,6 +384,85 @@ function CodeBlock({ language, code }) {
         />
       )}
     </>
+  );
+}
+
+function MarkdownTable({ children, ...props }) {
+  const tableRef = useRef(null);
+  const [csvCopied, setCsvCopied] = useState(false);
+
+  const buildCsvFromTable = () => {
+    const table = tableRef.current;
+    if (!table) return "";
+    return [...table.querySelectorAll("tr")]
+      .map((row) =>
+        [...row.children]
+          .map((cell) => {
+            const val = (cell.textContent || "").trim().replace(/\s+/g, " ").replace(/"/g, '""');
+            return /[",\n]/.test(val) ? `"${val}"` : val;
+          })
+          .join(",")
+      )
+      .join("\n");
+  };
+
+  const handleCopyCsv = async () => {
+    const csvText = buildCsvFromTable();
+    if (!csvText) return;
+    const ok = await writeClipboardText(csvText);
+    if (ok) {
+      setCsvCopied(true);
+      setTimeout(() => setCsvCopied(false), 1500);
+    }
+  };
+
+  const handleDownloadCsv = () => {
+    const csvText = buildCsvFromTable();
+    if (!csvText) return;
+    const blob = new Blob(["\uFEFF" + csvText], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `table-${Date.now()}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  };
+
+  // Sử dụng thẻ span.block để không nằm trong BLOCK_TAGS của copyText.js -> giữ nguyên 100% định dạng khi Copy Answer
+  return (
+    <span className="markdown-table-card block my-4 rounded-xl border border-edge-light dark:border-edge-dark overflow-hidden bg-white/60 dark:bg-white/[0.02] shadow-2xs">
+      <span
+        data-copy-ignore="true"
+        className="flex items-center justify-between px-3 py-1.5 bg-black/[0.03] dark:bg-white/[0.04] border-b border-edge-light dark:border-edge-dark text-[11px] text-zinc-500 dark:text-zinc-400"
+      >
+        <span className="font-mono font-medium uppercase tracking-wider text-[10px]">Bảng dữ liệu</span>
+        <span className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={handleCopyCsv}
+            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md hover:bg-black/5 dark:hover:bg-white/10 text-zinc-600 dark:text-zinc-300 transition-colors"
+          >
+            {csvCopied ? <Check size={11} className="text-emerald-500" /> : <Copy size={11} />}
+            <span>{csvCopied ? "Đã chép CSV" : "Sao chép CSV"}</span>
+          </button>
+          <button
+            type="button"
+            onClick={handleDownloadCsv}
+            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md hover:bg-black/5 dark:hover:bg-white/10 text-zinc-600 dark:text-zinc-300 transition-colors"
+          >
+            <Download size={11} />
+            <span>Tải .CSV</span>
+          </button>
+        </span>
+      </span>
+      <span className="block overflow-x-auto">
+        <table ref={tableRef} {...props}>
+          {children}
+        </table>
+      </span>
+    </span>
   );
 }
 
@@ -348,7 +509,172 @@ const MARKDOWN_COMPONENTS = {
   pre({ children }) {
     return <>{children}</>;
   },
+  table({ children, ...props }) {
+    return <MarkdownTable {...props}>{children}</MarkdownTable>;
+  },
 };
+
+function getDomainInfo(url) {
+  try {
+    const parsed = new URL(url);
+    const domain = parsed.hostname.replace(/^www\./, "");
+    const favicon = `https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=32`;
+    return { domain, favicon };
+  } catch {
+    return { domain: "web", favicon: null };
+  }
+}
+
+function RichSourceCards({ sources, label }) {
+  if (!Array.isArray(sources) || sources.length === 0) return null;
+  return (
+    <div data-copy-ignore="true" className="mt-3 pt-2.5 border-t border-edge-light dark:border-edge-dark">
+      <div className="flex items-center gap-1.5 mb-2 text-[11px] font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
+        <Globe size={12} className="text-brand-500" />
+        <span>{label} ({sources.length})</span>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
+        {sources.map((s, i) => {
+          const { domain, favicon } = getDomainInfo(s.url);
+          return (
+            <a
+              key={i}
+              href={s.url}
+              target="_blank"
+              rel="noreferrer"
+              className="group/src flex flex-col justify-between p-2.5 rounded-xl border border-zinc-200/80 dark:border-zinc-800 bg-zinc-50/70 dark:bg-zinc-900/50 hover:border-brand-500/50 hover:bg-brand-500/[0.04] transition-all text-start"
+            >
+              <div className="flex items-center gap-1.5 text-[11px] text-zinc-500 dark:text-zinc-400 mb-1">
+                <span className="inline-flex items-center justify-center w-4 h-4 rounded-md bg-brand-500/15 text-brand-600 dark:text-brand-300 font-mono font-bold text-[10px] shrink-0">
+                  {i + 1}
+                </span>
+                {favicon ? (
+                  <img
+                    src={favicon}
+                    alt=""
+                    className="w-3.5 h-3.5 rounded-xs shrink-0"
+                    onError={(e) => {
+                      e.currentTarget.style.display = "none";
+                    }}
+                  />
+                ) : (
+                  <Globe size={12} className="shrink-0" />
+                )}
+                <span className="truncate font-medium">{domain}</span>
+              </div>
+              <p className="text-xs font-medium text-zinc-800 dark:text-zinc-200 group-hover/src:text-brand-600 dark:group-hover/src:text-brand-300 line-clamp-2 leading-snug">
+                {s.title || s.url}
+              </p>
+            </a>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function buildFollowUpSuggestions(content = "") {
+  const text = String(content || "");
+  if (text.includes("```")) {
+    return [
+      "Giải thích chi tiết từng dòng code trên",
+      "Viết thêm Unit Test và bắt lỗi ngoại lệ",
+      "Làm sao để tối ưu hiệu năng đoạn code này?",
+    ];
+  }
+  if (text.includes("|") && text.includes("---")) {
+    return [
+      "Tóm tắt các điểm khác biệt quan trọng nhất",
+      "Phân tích ưu và nhược điểm thực tế",
+      "Đưa ra khuyến nghị lựa chọn phù hợp nhất",
+    ];
+  }
+  return [
+    "Giải thích sâu hơn kèm ví dụ thực tế",
+    "Tóm tắt ngắn gọn lại thành 3 ý chính",
+    "Còn lưu ý hoặc trường hợp ngoại lệ nào không?",
+  ];
+}
+
+/**
+ * Tách nội dung suy luận <think>...</think> hoặc <thinking>...</thinking> khỏi câu trả lời chính.
+ * Hỗ trợ cả khi đang stream dở (thẻ <think> đã mở nhưng chưa đóng).
+ */
+export function extractReasoning(rawContent = "") {
+  const str = String(rawContent || "");
+  if (!str.includes("<think")) {
+    return { reasoning: "", cleanContent: str, isThinkingNow: false };
+  }
+
+  const thinkBlocks = [];
+  let cleaned = str.replace(/<think(?:ing)?>([\s\S]*?)<\/think(?:ing)?>/gi, (_, inner) => {
+    if (inner && inner.trim()) thinkBlocks.push(inner.trim());
+    return "";
+  });
+
+  let isThinkingNow = false;
+  const openMatch = cleaned.match(/<think(?:ing)?>([\s\S]*)$/i);
+  if (openMatch) {
+    isThinkingNow = true;
+    if (openMatch[1] && openMatch[1].trim()) {
+      thinkBlocks.push(openMatch[1].trim());
+    }
+    cleaned = cleaned.slice(0, openMatch.index);
+  }
+
+  return {
+    reasoning: thinkBlocks.join("\n\n").trim(),
+    cleanContent: cleaned.trimStart(),
+    isThinkingNow,
+  };
+}
+
+function ReasoningBlock({ reasoning, isThinkingNow }) {
+  const [expanded, setExpanded] = useState(false);
+
+  useEffect(() => {
+    if (isThinkingNow) setExpanded(true);
+  }, [isThinkingNow]);
+
+  if (!reasoning && !isThinkingNow) return null;
+
+  return (
+    <div
+      data-copy-ignore="true"
+      className="mb-3 rounded-xl border border-brand-500/20 bg-brand-500/[0.04] dark:bg-brand-500/[0.07] overflow-hidden text-xs"
+    >
+      <button
+        type="button"
+        onClick={() => setExpanded((v) => !v)}
+        className="w-full flex items-center justify-between gap-2 px-3 py-2 text-start font-medium text-brand-700 dark:text-brand-300 hover:bg-brand-500/10 transition-colors"
+      >
+        <span className="flex items-center gap-2">
+          <Brain size={14} className={clsx("text-brand-500 shrink-0", isThinkingNow && "animate-pulse")} />
+          <span>
+            {isThinkingNow ? "AI đang suy luận..." : "Quá trình suy luận của AI (Chain-of-Thought)"}
+          </span>
+        </span>
+        <ChevronDown
+          size={14}
+          className={clsx("transition-transform duration-200 shrink-0 opacity-70", expanded && "rotate-180")}
+        />
+      </button>
+      <AnimatePresence initial={false}>
+        {expanded && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.18 }}
+            className="border-t border-brand-500/15 px-3.5 py-2.5 text-zinc-600 dark:text-zinc-300 font-mono text-[12px] leading-relaxed whitespace-pre-wrap max-h-64 overflow-y-auto bg-black/[0.02] dark:bg-black/20"
+          >
+            {reasoning || "Đang phân tích ngữ cảnh..."}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
 
 /** Render Markdown + công thức LaTeX (KaTeX). Memo để không render lại khi chỉ hover/đổi trạng thái nút. */
 const MarkdownContent = memo(function MarkdownContent({ content }) {
@@ -482,7 +808,19 @@ function MessageEditor({ initialValue, onSubmit, onCancel }) {
   );
 }
 
-export default function MessageBubble({ message, isLast, onRegenerate, onFeedback, onEdit, onRetry, isStreaming, onFork }) {
+export default function MessageBubble({
+  message,
+  isLast,
+  onRegenerate,
+  onFeedback,
+  onEdit,
+  onRetry,
+  isStreaming,
+  onFork,
+  onSendFollowUp,
+  isBookmarked = false,
+  onToggleBookmark,
+}) {
   const [copied, setCopied] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState(null);
   const markdownRef = useRef(null);
@@ -493,6 +831,11 @@ export default function MessageBubble({ message, isLast, onRegenerate, onFeedbac
   const images = useMessageImages(message);
   // Chỉ sửa được khi tin nhắn đã được lưu ở máy chủ (id thật) và không có luồng nào đang chạy.
   const canEdit = isUser && Boolean(onEdit) && !isStreaming && !String(message._id).startsWith("tmp-");
+
+  const { reasoning, cleanContent, isThinkingNow } = useMemo(
+    () => (isUser ? { reasoning: "", cleanContent: message.content || "", isThinkingNow: false } : extractReasoning(message.content)),
+    [isUser, message.content]
+  );
 
   const handleCopy = async () => {
     const text = extractCopyText(markdownRef.current);
@@ -508,6 +851,7 @@ export default function MessageBubble({ message, isLast, onRegenerate, onFeedbac
   };
 
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const [ttsRate, setTtsRate] = useState(1.0);
   const { lang } = useI18n();
 
   useEffect(() => {
@@ -518,15 +862,8 @@ export default function MessageBubble({ message, isLast, onRegenerate, onFeedbac
     };
   }, [isSpeaking]);
 
-  const handleToggleSpeak = () => {
+  const speakWithRate = (rateToUse) => {
     if (!("speechSynthesis" in window)) return;
-
-    if (isSpeaking) {
-      window.speechSynthesis.cancel();
-      setIsSpeaking(false);
-      return;
-    }
-
     window.speechSynthesis.cancel();
     const cleanText = (message.content || "")
       .replace(/```[\s\S]*?```/g, " [Đoạn mã] ")
@@ -540,7 +877,7 @@ export default function MessageBubble({ message, isLast, onRegenerate, onFeedbac
     const utterance = new SpeechSynthesisUtterance(cleanText);
     const isVietnamese = /[àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđ]/i.test(cleanText);
     utterance.lang = isVietnamese ? "vi-VN" : lang === "ja" ? "ja-JP" : "en-US";
-    utterance.rate = 1.0;
+    utterance.rate = rateToUse;
 
     utterance.onend = () => setIsSpeaking(false);
     utterance.onerror = () => setIsSpeaking(false);
@@ -549,9 +886,34 @@ export default function MessageBubble({ message, isLast, onRegenerate, onFeedbac
     window.speechSynthesis.speak(utterance);
   };
 
+  const handleToggleSpeak = () => {
+    if (!("speechSynthesis" in window)) return;
+
+    if (isSpeaking) {
+      window.speechSynthesis.cancel();
+      setIsSpeaking(false);
+      return;
+    }
+
+    speakWithRate(ttsRate);
+  };
+
+  const handleCycleTtsRate = () => {
+    const nextRate = ttsRate === 1.0 ? 1.25 : ttsRate === 1.25 ? 1.5 : 1.0;
+    setTtsRate(nextRate);
+    if (isSpeaking) {
+      speakWithRate(nextRate);
+    }
+  };
+
   const navLightbox = (delta) => {
     setLightboxIndex((i) => (i === null ? null : (i + delta + images.length) % images.length));
   };
+
+  const followUps = useMemo(() => {
+    if (isUser || !isLast || isStreaming || !message.content || message.error || !onSendFollowUp) return [];
+    return buildFollowUpSuggestions(message.content);
+  }, [isUser, isLast, isStreaming, message.content, message.error, onSendFollowUp]);
 
   return (
     <motion.div
@@ -602,25 +964,17 @@ export default function MessageBubble({ message, isLast, onRegenerate, onFeedbac
             </div>
           ) : (
             <>
-              {(message.content || !message.error) && (
+              <ReasoningBlock reasoning={reasoning} isThinkingNow={isThinkingNow && isStreaming && isLast} />
+              {(cleanContent || !message.error) && (
                 <div
                   ref={markdownRef}
                   dir="auto"
                   className={clsx("markdown-body", isStreaming && isLast && !message.error && "typing-cursor")}
                 >
-                  <MarkdownContent content={message.content} />
+                  <MarkdownContent content={cleanContent} />
                 </div>
               )}
-              {message.sources?.length > 0 && (
-                <div className="mt-2 pt-2 border-t border-edge-light dark:border-edge-dark space-y-1">
-                  <p className="text-[11px] font-medium opacity-50">{t("msg.sources")}</p>
-                  {message.sources.map((s, i) => (
-                    <a key={i} href={s.url} target="_blank" rel="noreferrer" className="block text-[12px] text-brand-500 hover:underline truncate">
-                      [{i + 1}] {s.title}
-                    </a>
-                  ))}
-                </div>
-              )}
+              <RichSourceCards sources={message.sources} label={t("msg.sources")} />
               {message.error && (
                 <ErrorCard
                   key={`${message.error.code}-${message.error.message}`}
@@ -649,7 +1003,7 @@ export default function MessageBubble({ message, isLast, onRegenerate, onFeedbac
         )}
 
         {!isUser && message.content && (
-          <div className="chat-message-actions flex items-center gap-1 mt-1.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+          <div className="chat-message-actions flex flex-wrap items-center gap-1 mt-1.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
             <Tooltip label={copied ? t("msg.copied") : t("msg.copy")}>
               <button onClick={handleCopy} aria-label={t("msg.copyAnswer")} className="p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/10">
                 {copied ? <Check size={14} className="text-ion-500" /> : <Copy size={14} className="opacity-60" />}
@@ -670,6 +1024,36 @@ export default function MessageBubble({ message, isLast, onRegenerate, onFeedbac
                 {isSpeaking ? <VolumeX size={14} /> : <Volume2 size={14} />}
               </button>
             </Tooltip>
+            {isSpeaking && (
+              <Tooltip label="Tốc độ đọc giọng nói">
+                <button
+                  type="button"
+                  onClick={handleCycleTtsRate}
+                  aria-label="Đổi tốc độ đọc"
+                  className="px-1.5 py-0.5 rounded-md text-[10px] font-mono font-semibold bg-brand-500/15 text-brand-600 dark:text-brand-400 hover:bg-brand-500/25 transition-colors"
+                >
+                  {ttsRate}x
+                </button>
+              </Tooltip>
+            )}
+            {Boolean(onToggleBookmark) && !String(message._id).startsWith("tmp-") && (
+              <Tooltip label={isBookmarked ? "Bỏ đánh dấu tin nhắn" : "Đánh dấu tin nhắn quan trọng"}>
+                <button
+                  type="button"
+                  onClick={() => onToggleBookmark(message)}
+                  aria-label={isBookmarked ? "Bỏ đánh dấu tin nhắn" : "Đánh dấu tin nhắn"}
+                  aria-pressed={isBookmarked}
+                  className={clsx(
+                    "p-1.5 rounded-lg transition-colors",
+                    isBookmarked
+                      ? "text-amber-500 bg-amber-500/15"
+                      : "hover:bg-black/5 dark:hover:bg-white/10 opacity-60 hover:opacity-100"
+                  )}
+                >
+                  <Bookmark size={14} className={isBookmarked ? "fill-amber-500" : ""} />
+                </button>
+              </Tooltip>
+            )}
             {Boolean(onFork) && !isStreaming && (
               <Tooltip label="Tách nhánh từ đây">
                 <button
@@ -684,32 +1068,75 @@ export default function MessageBubble({ message, isLast, onRegenerate, onFeedbac
             )}
             {isLast && (
               <Tooltip label={t("msg.regenerate")}>
-<button onClick={onRegenerate} aria-label={t("msg.regenerate")} className="p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/10">
-                <RotateCcw size={14} className="opacity-60" />
-              </button>
-</Tooltip>
+                <button onClick={onRegenerate} aria-label={t("msg.regenerate")} className="p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/10">
+                  <RotateCcw size={14} className="opacity-60" />
+                </button>
+              </Tooltip>
             )}
             <Tooltip label={t("msg.like")}>
-<button
-              onClick={() => onFeedback(message._id, message.feedback === "like" ? null : "like")}
-              aria-label={t("msg.likeAria")}
-              aria-pressed={message.feedback === "like"}
-              className="p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/10"
-            >
-              <ThumbsUp size={14} className={message.feedback === "like" ? "text-ion-500 fill-ion-500" : "opacity-60"} />
-            </button>
-</Tooltip>
+              <button
+                onClick={() => onFeedback(message._id, message.feedback === "like" ? null : "like")}
+                aria-label={t("msg.likeAria")}
+                aria-pressed={message.feedback === "like"}
+                className="p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/10"
+              >
+                <ThumbsUp size={14} className={message.feedback === "like" ? "text-ion-500 fill-ion-500" : "opacity-60"} />
+              </button>
+            </Tooltip>
             <Tooltip label={t("msg.dislike")}>
-<button
-              onClick={() => onFeedback(message._id, message.feedback === "dislike" ? null : "dislike")}
-              aria-label={t("msg.dislikeAria")}
-              aria-pressed={message.feedback === "dislike"}
-              className="p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/10"
-            >
-              <ThumbsDown size={14} className={message.feedback === "dislike" ? "text-red-500 fill-red-500" : "opacity-60"} />
-            </button>
-</Tooltip>
-            {message.provider && <span className="text-[11px] opacity-40 ms-1 capitalize">{message.provider}</span>}
+              <button
+                onClick={() => onFeedback(message._id, message.feedback === "dislike" ? null : "dislike")}
+                aria-label={t("msg.dislikeAria")}
+                aria-pressed={message.feedback === "dislike"}
+                className="p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/10"
+              >
+                <ThumbsDown size={14} className={message.feedback === "dislike" ? "text-red-500 fill-red-500" : "opacity-60"} />
+              </button>
+            </Tooltip>
+
+            {(message.provider || message.model || message.telemetry) && (
+              <div data-copy-ignore="true" className="flex flex-wrap items-center gap-1.5 ms-1.5 text-[11px] text-zinc-500 dark:text-zinc-400">
+                {message.provider && (
+                  <span className="px-1.5 py-0.5 rounded-md bg-black/[0.04] dark:bg-white/[0.06] font-medium capitalize">
+                    {message.provider}{message.model ? ` • ${String(message.model).split("/").pop()}` : ""}
+                  </span>
+                )}
+                {message.telemetry?.tokensPerSec > 0 && (
+                  <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-mono text-[10px]">
+                    <Zap size={10} /> {message.telemetry.tokensPerSec} tok/s
+                  </span>
+                )}
+                {message.telemetry?.durationMs > 0 && (
+                  <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md bg-black/[0.04] dark:bg-white/[0.06] font-mono text-[10px]">
+                    <Clock size={10} /> {(message.telemetry.durationMs / 1000).toFixed(1)}s
+                  </span>
+                )}
+                {message.telemetry?.totalTokens > 0 && (
+                  <span className="hidden sm:inline-flex items-center px-1.5 py-0.5 rounded-md bg-black/[0.04] dark:bg-white/[0.06] font-mono text-[10px]">
+                    {message.telemetry.totalTokens} tok
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Gợi ý câu hỏi tiếp theo (Follow-up Suggestions Chips) */}
+        {followUps.length > 0 && (
+          <div data-copy-ignore="true" className="mt-2.5 flex flex-wrap items-center gap-1.5">
+            <span className="inline-flex items-center gap-1 text-[11px] font-medium text-brand-600 dark:text-brand-400 me-0.5">
+              <Sparkles size={12} /> Gợi ý hỏi tiếp:
+            </span>
+            {followUps.map((promptText, idx) => (
+              <button
+                key={idx}
+                type="button"
+                onClick={() => onSendFollowUp(promptText)}
+                className="text-xs px-2.5 py-1 rounded-full border border-zinc-200 dark:border-zinc-800 bg-white/80 dark:bg-zinc-900/60 hover:border-brand-500/50 hover:bg-brand-500/10 hover:text-brand-600 dark:hover:text-brand-300 text-zinc-600 dark:text-zinc-300 transition-all"
+              >
+                {promptText}
+              </button>
+            ))}
           </div>
         )}
       </div>

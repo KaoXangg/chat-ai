@@ -1,0 +1,63 @@
+{
+  "name": "Chat AI - Trợ lý AI đa mô hình chuyên nghiệp",
+  "short_name": "Chat AI",
+  "description": "Nền tảng trợ lý AI đa mô hình (Groq, Gemini, OpenRouter), hỗ trợ Artifact Canvas, đọc tài liệu PDF/DOCX, giọng nói Whisper và bộ nhớ dài hạn.",
+  "start_url": "/chat",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#08080f",
+  "theme_color": "#5843e6",
+  "categories": [
+    "productivity",
+    "developer",
+    "utilities"
+  ],
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/brand-logo.png",
+      "sizes": "192x192 512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/brand-logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Cuộc trò chuyện mới",
+      "short_name": "Chat mới",
+      "description": "Mở không gian trò chuyện AI",
+      "url": "/chat",
+      "icons": [
+        {
+          "src": "/favicon.svg",
+          "sizes": "any"
+        }
+      ]
+    },
+    {
+      "name": "Bảng giá dịch vụ",
+      "short_name": "Bảng giá",
+      "description": "Xem các gói dịch vụ Chat AI",
+      "url": "/pricing",
+      "icons": [
+        {
+          "src": "/favicon.svg",
+          "sizes": "any"
+        }
+      ]
+    }
+  ]
+}
+

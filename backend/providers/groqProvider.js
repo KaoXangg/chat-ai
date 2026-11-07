@@ -24,12 +24,33 @@ export class GroqProvider extends AIProvider {
     }, { signal });
 
     let usage = null;
+    let inReasoning = false;
     for await (const chunk of stream) {
-      const token = chunk.choices?.[0]?.delta?.content || "";
-      if (token) yield token;
+      const delta = chunk.choices?.[0]?.delta;
+      const reasoning = delta?.reasoning_content || delta?.reasoning || "";
+      if (reasoning) {
+        if (!inReasoning) {
+          inReasoning = true;
+          yield `<think>${reasoning}`;
+        } else {
+          yield reasoning;
+        }
+      }
+      const token = delta?.content || "";
+      if (token) {
+        if (inReasoning) {
+          inReasoning = false;
+          yield `</think>\n\n${token}`;
+        } else {
+          yield token;
+        }
+      }
       // Groq trả số token ở chunk cuối (x_groq.usage).
       const u = chunk.x_groq?.usage || chunk.usage;
       if (u) usage = u;
+    }
+    if (inReasoning) {
+      yield "</think>\n\n";
     }
     if (usage) yield { usage: { promptTokens: usage.prompt_tokens, completionTokens: usage.completion_tokens } };
   }

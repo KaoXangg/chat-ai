@@ -48,3 +48,29 @@ test("model payload validates types, SQL integer ranges and excludes protected f
     assert.throws(() => sanitizeModelPayload({ ...valid, ...bad }, { creating: true }), { status: 400 });
   }
 });
+
+test("findBlockedKeyword respects Unicode word boundaries and prevents Scunthorpe false positives", async () => {
+  const { findBlockedKeyword } = await import("../utils/moderation.js");
+  const list = "hack, lừa đảo,賭博";
+  assert.equal(findBlockedKeyword("Tôi đang tham gia hackathon", list), null);
+  assert.equal(findBlockedKeyword("Hướng dẫn hack tài khoản", list), "hack");
+  assert.equal(findBlockedKeyword("Cảnh báo chiêu trò LỪA ĐẢO qua mạng", list), "lừa đảo");
+});
+
+test("extractDocumentContent parses plain text and PDF text streams", async () => {
+  const { extractDocumentContent } = await import("../utils/documentParser.js");
+  const txtBase64 = Buffer.from("Hello Chat AI Document", "utf8").toString("base64");
+  const txtRes = extractDocumentContent({ fileName: "notes.txt", mimeType: "text/plain", base64Data: txtBase64 });
+  assert.equal(txtRes.text, "Hello Chat AI Document");
+
+  const fakePdf = "%PDF-1.4\n1 0 obj\n<< /Length 44 >>\nstream\nBT /F1 12 Tf 72 712 Td (Xin chao PDF) Tj ET\nendstream\nendobj\n%%EOF";
+  const pdfBase64 = Buffer.from(fakePdf, "latin1").toString("base64");
+  const pdfRes = extractDocumentContent({ fileName: "sample.pdf", mimeType: "application/pdf", base64Data: pdfBase64 });
+  assert.match(pdfRes.text, /Xin chao PDF/);
+});
+
+test("cooldownKey keys rate-limit cooldown by provider and model", async () => {
+  const { cooldownKey } = await import("../providers/aiRouter.js");
+  assert.equal(cooldownKey("openrouter", "google/gemma-3"), "openrouter/google/gemma-3");
+  assert.notEqual(cooldownKey("openrouter", "model-a"), cooldownKey("openrouter", "model-b"));
+});

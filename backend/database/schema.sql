@@ -435,5 +435,40 @@ BEGIN
 END
 GO
 
-PRINT N'Cơ sở dữ liệu Chat AI đã được khởi tạo/cập nhật thành công với 12 bảng.';
+-- =============================================================================
+-- 13. BẢNG UpgradeRequests (Yêu cầu nâng cấp gói dịch vụ chờ Admin duyệt)
+--     & Các cột mở rộng: Users.memories, Conversations.archived
+-- =============================================================================
+IF OBJECT_ID('dbo.Users', 'U') IS NOT NULL AND COL_LENGTH('dbo.Users', 'memories') IS NULL
+    ALTER TABLE dbo.Users ADD memories NVARCHAR(MAX) NULL;
+GO
+
+IF OBJECT_ID('dbo.Conversations', 'U') IS NOT NULL AND COL_LENGTH('dbo.Conversations', 'archived') IS NULL
+    ALTER TABLE dbo.Conversations ADD archived BIT NOT NULL CONSTRAINT DF_Conversations_archived DEFAULT (0);
+GO
+
+IF OBJECT_ID('dbo.UpgradeRequests', 'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.UpgradeRequests (
+        id            INT IDENTITY(1,1) PRIMARY KEY,
+        userId        INT            NOT NULL,
+        currentTier   NVARCHAR(20)   NOT NULL CONSTRAINT DF_UpgradeRequests_currentTier DEFAULT ('free'),
+        requestedTier NVARCHAR(20)   NOT NULL,
+        billingCycle  NVARCHAR(20)   NOT NULL CONSTRAINT DF_UpgradeRequests_billingCycle DEFAULT ('monthly'),
+        amount        INT            NOT NULL CONSTRAINT DF_UpgradeRequests_amount DEFAULT (0),
+        note          NVARCHAR(500)  NULL,
+        status        NVARCHAR(20)   NOT NULL CONSTRAINT DF_UpgradeRequests_status DEFAULT ('pending'),
+        adminNote     NVARCHAR(500)  NULL,
+        reviewedBy    INT            NULL,
+        reviewedAt    DATETIME2      NULL,
+        createdAt     DATETIME2      NOT NULL CONSTRAINT DF_UpgradeRequests_createdAt DEFAULT (SYSUTCDATETIME()),
+        updatedAt     DATETIME2      NOT NULL CONSTRAINT DF_UpgradeRequests_updatedAt DEFAULT (SYSUTCDATETIME()),
+        CONSTRAINT FK_UpgradeRequests_userId FOREIGN KEY (userId) REFERENCES dbo.Users(id) ON DELETE CASCADE
+    );
+    CREATE NONCLUSTERED INDEX IX_UpgradeRequests_userId ON dbo.UpgradeRequests (userId ASC);
+    CREATE NONCLUSTERED INDEX IX_UpgradeRequests_status_createdAt ON dbo.UpgradeRequests (status ASC, createdAt DESC);
+END
+GO
+
+PRINT N'Cơ sở dữ liệu Chat AI đã được khởi tạo/cập nhật thành công.';
 GO

@@ -12,6 +12,9 @@ import Announcement from "../models/Announcement.js";
 import SystemSetting, { getSystemSettings, invalidateSettingsCache } from "../models/SystemSetting.js";
 import AuditLog, { createAuditLog } from "../models/AuditLog.js";
 import Session from "../models/Session.js";
+import UpgradeRequest from "../models/UpgradeRequest.js";
+import { runDatabaseCleanup } from "../utils/cleanupJob.js";
+import { normalizeTier } from "../utils/quota.js";
 import { authMiddleware } from "../middleware/auth.js";
 import { requireAdmin } from "../middleware/admin.js";
 import { getConfiguredProviders } from "../providers/aiRouter.js";
@@ -1057,17 +1060,84 @@ router.get("/analytics/providers", async (req, res, next) => {
       };
     });
 
+    // 3. Phân bổ người dùng & tiêu thụ token theo từng gói dịch vụ (Free / Plus / Pro)
+    const allUsersTier = await User.findAll({
+      attributes: ["id", "userTier"],
+      raw: true,
+    });
+    const tierCounts = { free: 0, plus: 0, premium: 0 };
+    const userTierLookup = new Map();
+    for (const u of allUsersTier) {
+      const normalized = normalizeTier(u.userTier);
+      tierCounts[normalized] = (tierCounts[normalized] || 0) + 1;
+      userTierLookup.set(u.id, normalized);
+    }
+
+    const usageByUser = await TokenUsage.findAll({
+      attributes: [
+        "userId",
+        [sequelize.fn("SUM", sequelize.col("totalTokens")), "totalTokens"],
+      ],
+      group: ["userId"],
+      raw: true,
+    });
+    const tierTokens = { free: 0, plus: 0, premium: 0 };
+    for (const row of usageByUser) {
+      const tKey = userTierLookup.get(row.userId) || "free";
+      tierTokens[tKey] = (tierTokens[tKey] || 0) + (Number(row.totalTokens) || 0);
+    }
+
+    const tierDistribution = [
+      { tier: "free", label: "Free", userCount: tierCounts.free, totalTokens: tierTokens.free },
+      { tier: "plus", label: "Plus", userCount: tierCounts.plus, totalTokens: tierTokens.plus },
+      { tier: "premium", label: "Pro / Premium", userCount: tierCounts.premium, totalTokens: tierTokens.premium },
+    ];
+
+    // 4. Tỷ lệ phản hồi thành công theo từng nhà cung cấp từ bảng Messages
+    const msgQualityRaw = await Message.findAll({
+      where: { role: "assistant" },
+      attributes: [
+        "provider",
+        "isError",
+        [sequelize.fn("COUNT", sequelize.col("id")), "msgCount"],
+      ],
+      group: ["provider", "isError"],
+      raw: true,
+    });
+    const qualityMap = new Map();
+    for (const r of msgQualityRaw) {
+      const prov = r.provider || "Khác";
+      const cur = qualityMap.get(prov) || { total: 0, errors: 0 };
+      const cnt = Number(r.msgCount) || 0;
+      cur.total += cnt;
+      if (r.isError) cur.errors += cnt;
+      qualityMap.set(prov, cur);
+    }
+
+    const pendingUpgradeRequests = await UpgradeRequest.count({ where: { status: "pending" } }).catch(() => 0);
+
     res.json({
       success: true,
       data: {
-        providerStats: providerStats.map((p) => ({
-          provider: p.provider || "Khác",
-          totalTokens: Number(p.totalTokens) || 0,
-          promptTokens: Number(p.promptTokens) || 0,
-          completionTokens: Number(p.completionTokens) || 0,
-          requestCount: Number(p.requestCount) || 0,
-        })),
+        providerStats: providerStats.map((p) => {
+          const prov = p.provider || "Khác";
+          const totalTok = Number(p.totalTokens) || 0;
+          const reqCnt = Number(p.requestCount) || 0;
+          const q = qualityMap.get(prov) || { total: reqCnt, errors: 0 };
+          const successRate = q.total > 0 ? Number((((q.total - q.errors) / q.total) * 100).toFixed(1)) : 100;
+          return {
+            provider: prov,
+            totalTokens: totalTok,
+            promptTokens: Number(p.promptTokens) || 0,
+            completionTokens: Number(p.completionTokens) || 0,
+            requestCount: reqCnt,
+            avgTokensPerRequest: reqCnt > 0 ? Math.round(totalTok / reqCnt) : 0,
+            successRate,
+          };
+        }),
         topUsers,
+        tierDistribution,
+        pendingUpgradeRequests,
       },
     });
   } catch (err) {
@@ -1215,6 +1285,166 @@ router.post("/system/import", async (req, res, next) => {
     });
 
     res.json({ success: true, data: { message: `Phục hồi cấu hình thành công! (Phiên bản: ${backupData.version || "1.0"})` } });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ---------- 8. DỌN DẸP PHIÊN HẾT HẠN & MÃ OTP RÁC ----------
+router.post("/system/cleanup", async (req, res, next) => {
+  try {
+    const stats = await runDatabaseCleanup();
+    await createAuditLog({
+      adminId: req.user.id,
+      adminUsername: req.user.username,
+      action: "SYSTEM_CLEANUP",
+      targetType: "System",
+      targetId: "1",
+      details: stats,
+      ipAddress: req.ip,
+    }).catch(() => {});
+
+    res.json({
+      success: true,
+      data: {
+        ...stats,
+        message: `Đã dọn dẹp ${stats.deletedSessions} phiên hết hạn và ${stats.deletedPasswordResets} bản ghi OTP cũ.`,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ---------- 9. DUYỆT YÊU CẦU NÂNG CẤP GÓI DỊCH VỤ (UPGRADE REQUESTS) ----------
+router.get("/upgrade-requests", async (req, res, next) => {
+  try {
+    const { status } = req.query;
+    const where = {};
+    if (status && ["pending", "approved", "rejected", "cancelled"].includes(status)) {
+      where.status = status;
+    }
+
+    const [requests, pendingCount] = await Promise.all([
+      UpgradeRequest.findAll({
+        where,
+        include: [
+          {
+            model: User,
+            as: "user",
+            attributes: ["id", "username", "email", "avatar", "userTier", "status"],
+          },
+        ],
+        order: [["createdAt", "DESC"]],
+        limit: 100,
+      }),
+      UpgradeRequest.count({ where: { status: "pending" } }),
+    ]);
+
+    res.json({
+      success: true,
+      data: {
+        requests,
+        pendingCount,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post("/upgrade-requests/:id/approve", async (req, res, next) => {
+  try {
+    const upgradeReq = await UpgradeRequest.findByPk(req.params.id);
+    if (!upgradeReq) {
+      return res.status(404).json({ success: false, error: { code: "NOT_FOUND", message: "Không tìm thấy yêu cầu nâng cấp." } });
+    }
+    if (upgradeReq.status !== "pending") {
+      return res.status(400).json({ success: false, error: { code: "ALREADY_PROCESSED", message: "Yêu cầu này đã được xử lý trước đó." } });
+    }
+
+    const user = await User.findByPk(upgradeReq.userId);
+    if (!user) {
+      return res.status(404).json({ success: false, error: { code: "NOT_FOUND", message: "Không tìm thấy người dùng." } });
+    }
+
+    const targetTier = normalizeTier(upgradeReq.requestedTier);
+    const adminNote = typeof req.body?.adminNote === "string" ? req.body.adminNote.trim().slice(0, 500) : null;
+
+    await sequelize.transaction(async (transaction) => {
+      user.userTier = targetTier;
+      await user.save({ transaction });
+
+      upgradeReq.status = "approved";
+      upgradeReq.adminNote = adminNote;
+      upgradeReq.reviewedBy = req.user.id;
+      upgradeReq.reviewedAt = new Date();
+      await upgradeReq.save({ transaction });
+    });
+
+    await createAuditLog({
+      adminId: req.user.id,
+      adminUsername: req.user.username,
+      action: "TIER_UPGRADE_APPROVED",
+      targetType: "UpgradeRequest",
+      targetId: String(upgradeReq.id),
+      details: {
+        userId: user.id,
+        username: user.username,
+        fromTier: upgradeReq.currentTier,
+        toTier: targetTier,
+        billingCycle: upgradeReq.billingCycle,
+        amount: upgradeReq.amount,
+      },
+      ipAddress: req.ip,
+    }).catch(() => {});
+
+    res.json({
+      success: true,
+      message: `Đã phê duyệt nâng cấp gói ${targetTier.toUpperCase()} cho ${user.username}.`,
+      data: { request: upgradeReq, user },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post("/upgrade-requests/:id/reject", async (req, res, next) => {
+  try {
+    const upgradeReq = await UpgradeRequest.findByPk(req.params.id);
+    if (!upgradeReq) {
+      return res.status(404).json({ success: false, error: { code: "NOT_FOUND", message: "Không tìm thấy yêu cầu nâng cấp." } });
+    }
+    if (upgradeReq.status !== "pending") {
+      return res.status(400).json({ success: false, error: { code: "ALREADY_PROCESSED", message: "Yêu cầu này đã được xử lý trước đó." } });
+    }
+
+    const adminNote = typeof req.body?.adminNote === "string" ? req.body.adminNote.trim().slice(0, 500) : "Từ chối bởi Quản trị viên.";
+    upgradeReq.status = "rejected";
+    upgradeReq.adminNote = adminNote;
+    upgradeReq.reviewedBy = req.user.id;
+    upgradeReq.reviewedAt = new Date();
+    await upgradeReq.save();
+
+    await createAuditLog({
+      adminId: req.user.id,
+      adminUsername: req.user.username,
+      action: "TIER_UPGRADE_REJECTED",
+      targetType: "UpgradeRequest",
+      targetId: String(upgradeReq.id),
+      details: {
+        userId: upgradeReq.userId,
+        requestedTier: upgradeReq.requestedTier,
+        adminNote,
+      },
+      ipAddress: req.ip,
+    }).catch(() => {});
+
+    res.json({
+      success: true,
+      message: "Đã từ chối yêu cầu nâng cấp gói.",
+      data: { request: upgradeReq },
+    });
   } catch (err) {
     next(err);
   }

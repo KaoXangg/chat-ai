@@ -21,6 +21,25 @@ export function conversationToMarkdown(title, messages, labels, locale = "en") {
   return lines.join("\n");
 }
 
+export function conversationToJson(title, messages, meta = {}) {
+  const payload = {
+    title: title || "Conversation",
+    exportedAt: new Date().toISOString(),
+    ...meta,
+    messages: (messages || []).map((m) => ({
+      id: m._id || m.id,
+      role: m.role,
+      content: m.content || "",
+      provider: m.provider || null,
+      model: m.model || null,
+      imageCount: imageCount(m),
+      sources: m.sources || null,
+      createdAt: m.createdAt || null,
+    })),
+  };
+  return JSON.stringify(payload, null, 2);
+}
+
 export function downloadTextFile(filename, text, mime = "text/markdown;charset=utf-8") {
   const blob = new Blob([text], { type: mime });
   const url = URL.createObjectURL(blob);

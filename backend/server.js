@@ -2,6 +2,7 @@ import "dotenv/config";
 import { connectDB } from "./config/db.js";
 import "./models/index.js";
 import { encryptStoredApiKeys } from "./models/SystemSetting.js";
+import { startPeriodicCleanup, runDatabaseCleanup } from "./utils/cleanupJob.js";
 import { createApp } from "./app.js";
 
 const app = createApp();
@@ -14,6 +15,8 @@ connectDB().then(async () => {
   } catch (err) {
     console.warn("[Server] Không mã hóa được API key trong DB:", err?.message);
   }
+  runDatabaseCleanup().catch(() => {});
+  startPeriodicCleanup();
   app.listen(PORT, () => {
     console.log(`[Server] Chat AI backend đang chạy tại http://localhost:${PORT}`);
   });

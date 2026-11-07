@@ -11,6 +11,7 @@ import SystemSetting from "./SystemSetting.js";
 import AuditLog from "./AuditLog.js";
 import Announcement from "./Announcement.js";
 import Session from "./Session.js";
+import UpgradeRequest from "./UpgradeRequest.js";
 
 User.hasMany(Conversation, { foreignKey: "userId", as: "conversations", onDelete: "CASCADE" });
 Conversation.belongsTo(User, { foreignKey: "userId", as: "user" });
@@ -42,6 +43,9 @@ AuditLog.belongsTo(User, { foreignKey: "adminId", as: "admin" });
 User.hasMany(Session, { foreignKey: "userId", as: "sessions", onDelete: "CASCADE" });
 Session.belongsTo(User, { foreignKey: "userId", as: "user" });
 
+User.hasMany(UpgradeRequest, { foreignKey: "userId", as: "upgradeRequests", onDelete: "CASCADE" });
+UpgradeRequest.belongsTo(User, { foreignKey: "userId", as: "user" });
+
 export { 
   sequelize, 
   User, 
@@ -55,5 +59,6 @@ export {
   SystemSetting,
   AuditLog,
   Announcement,
-  Session
+  Session,
+  UpgradeRequest
 };

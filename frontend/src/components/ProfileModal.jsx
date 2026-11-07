@@ -32,6 +32,8 @@ import {
   Crown,
   ChevronRight,
   Info,
+  Plus,
+  Trash2,
 } from "lucide-react";
 import api from "../api/axios.js";
 import { useAuth } from "../context/AuthContext.jsx";
@@ -109,8 +111,11 @@ export default function ProfileModal({ open, onClose }) {
   const [savingAccount, setSavingAccount] = useState(false);
   const [avatarBusy, setAvatarBusy] = useState(false);
 
-  // Tab System Prompt states
+  // Tab System Prompt & User Memories states
   const [systemPrompt, setSystemPrompt] = useState("");
+  const [memories, setMemories] = useState([]);
+  const [newMemory, setNewMemory] = useState("");
+  const [addingMemory, setAddingMemory] = useState(false);
   const [promptLoading, setPromptLoading] = useState(false);
   const [savingPrompt, setSavingPrompt] = useState(false);
 
@@ -183,8 +188,13 @@ export default function ProfileModal({ open, onClose }) {
       api
         .get("/preferences")
         .then((res) => {
-          if (res.data.success && res.data.data.systemPrompt !== undefined) {
-            setSystemPrompt(res.data.data.systemPrompt || "");
+          if (res.data.success && res.data.data) {
+            if (res.data.data.systemPrompt !== undefined) {
+              setSystemPrompt(res.data.data.systemPrompt || "");
+            }
+            if (Array.isArray(res.data.data.memories)) {
+              setMemories(res.data.data.memories);
+            }
           }
         })
         .catch(() => {})
@@ -239,6 +249,47 @@ export default function ProfileModal({ open, onClose }) {
       toast.error(err.response?.data?.error?.message || t("error.GENERIC"));
     } finally {
       setSavingPrompt(false);
+    }
+  };
+
+  const handleAddMemory = async () => {
+    const content = newMemory.trim();
+    if (!content || addingMemory) return;
+    setAddingMemory(true);
+    try {
+      const res = await api.post("/preferences/memories", { content });
+      if (res.data.success && Array.isArray(res.data.data?.memories)) {
+        setMemories(res.data.data.memories);
+        setNewMemory("");
+        toast.success("Đã lưu thông tin vào bộ nhớ AI.");
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.error?.message || "Không thể thêm bộ nhớ.");
+    } finally {
+      setAddingMemory(false);
+    }
+  };
+
+  const handleDeleteMemory = async (memoryId) => {
+    try {
+      const res = await api.delete(`/preferences/memories/${encodeURIComponent(memoryId)}`);
+      if (res.data.success && Array.isArray(res.data.data?.memories)) {
+        setMemories(res.data.data.memories);
+      }
+    } catch {
+      toast.error("Không thể xóa mục bộ nhớ.");
+    }
+  };
+
+  const handleClearMemories = async () => {
+    try {
+      const res = await api.delete("/preferences/memories");
+      if (res.data.success) {
+        setMemories([]);
+        toast.success("Đã xóa toàn bộ bộ nhớ cá nhân.");
+      }
+    } catch {
+      toast.error("Không thể xóa bộ nhớ.");
     }
   };
 
@@ -754,6 +805,83 @@ export default function ProfileModal({ open, onClose }) {
                           )}
                           <span>{t("profile.save")}</span>
                         </button>
+                      </div>
+
+                      {/* Bộ nhớ dài hạn (User Memories / Custom Facts) */}
+                      <div className="pt-5 border-t border-zinc-200 dark:border-zinc-800 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <h4 className="text-sm font-semibold text-zinc-800 dark:text-zinc-200 flex items-center gap-1.5">
+                              <Sparkles size={15} className="text-brand-500" />
+                              Bộ nhớ dài hạn (User Memories)
+                            </h4>
+                            <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
+                              Lưu các thông tin cá nhân hóa ngắn gọn (công nghệ đang dùng, phong cách trả lời yêu thích...) để AI luôn ghi nhớ xuyên suốt mọi cuộc trò chuyện.
+                            </p>
+                          </div>
+                          {memories.length > 0 && (
+                            <button
+                              type="button"
+                              onClick={handleClearMemories}
+                              className="text-xs text-red-500 hover:underline shrink-0"
+                            >
+                              Xóa tất cả ({memories.length})
+                            </button>
+                          )}
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="text"
+                            value={newMemory}
+                            onChange={(e) => setNewMemory(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                e.preventDefault();
+                                handleAddMemory();
+                              }
+                            }}
+                            maxLength={300}
+                            placeholder="VD: Đang dùng Node.js + SQL Server, thích ví dụ code thực tế..."
+                            className="flex-1 px-3.5 py-2 text-xs rounded-xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-ion-500/30"
+                          />
+                          <button
+                            type="button"
+                            onClick={handleAddMemory}
+                            disabled={addingMemory || !newMemory.trim()}
+                            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 text-xs font-semibold hover:opacity-90 disabled:opacity-40 shrink-0"
+                          >
+                            {addingMemory ? <Loader2 size={13} className="animate-spin" /> : <Plus size={14} />}
+                            <span>Ghi nhớ</span>
+                          </button>
+                        </div>
+
+                        {memories.length === 0 ? (
+                          <p className="text-xs text-zinc-400 italic py-2">
+                            Chưa có thông tin nào trong bộ nhớ cá nhân.
+                          </p>
+                        ) : (
+                          <div className="space-y-1.5 max-h-44 overflow-y-auto pr-1">
+                            {memories.map((m) => (
+                              <div
+                                key={m.id}
+                                className="flex items-center justify-between gap-2 px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800/60 border border-zinc-200/80 dark:border-zinc-800 text-xs"
+                              >
+                                <span className="text-zinc-700 dark:text-zinc-200 break-words flex-1">
+                                  • {m.content}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteMemory(m.id)}
+                                  title="Xóa ghi nhớ này"
+                                  className="p-1 rounded-lg hover:bg-red-500/10 text-zinc-400 hover:text-red-500 shrink-0 transition-colors"
+                                >
+                                  <Trash2 size={13} />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     </>
                   )}

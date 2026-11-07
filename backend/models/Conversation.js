@@ -17,6 +17,7 @@ const Conversation = sequelize.define(
     provider: { type: DataTypes.STRING(50), allowNull: false, defaultValue: "openrouter" },
     model: { type: DataTypes.STRING(150), allowNull: false, defaultValue: "openrouter/free" },
     pinned: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
+    archived: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
     systemPrompt: { type: DataTypes.STRING(2000), allowNull: true },
     shareId: { type: DataTypes.STRING(50), allowNull: true },
     folderId: { type: DataTypes.INTEGER, allowNull: true },

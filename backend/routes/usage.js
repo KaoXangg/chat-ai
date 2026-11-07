@@ -1,6 +1,7 @@
 import express from "express";
 import AIModel from "../models/AIModel.js";
 import User from "../models/User.js";
+import UpgradeRequest from "../models/UpgradeRequest.js";
 import { authMiddleware } from "../middleware/auth.js";
 import { getConfiguredProviders } from "../providers/aiRouter.js";
 import {
@@ -11,6 +12,7 @@ import {
   getUserTodayQuota,
   normalizeTier,
   getTierMultiplier,
+  getTierFeatures,
   TIER_LIMITS,
 } from "../utils/quota.js";
 import { validate } from "../middleware/validate.js";
@@ -20,14 +22,24 @@ import { createAuditLog } from "../models/AuditLog.js";
 const router = express.Router();
 router.use(authMiddleware);
 
+const PLAN_PRICING = {
+  free: { monthly: 0, yearly: 0 },
+  plus: { monthly: 99_000, yearly: 990_000 },
+  premium: { monthly: 249_000, yearly: 2_490_000 },
+};
+
 // GET /api/usage -> mức sử dụng token hôm nay của người dùng hiện tại, theo từng model đang bật và tổng quota theo gói.
 router.get("/", async (req, res, next) => {
   try {
     const { startsAt, resetsAt } = getQuotaWindow();
-    const [models, usageMap, quota] = await Promise.all([
+    const [models, usageMap, quota, pendingUpgrade] = await Promise.all([
       AIModel.findAll({ where: { enabled: true }, order: [["priority", "ASC"]] }),
       getUsageByModel(req.user.id, startsAt),
       getUserTodayQuota(req.user),
+      UpgradeRequest.findOne({
+        where: { userId: req.user.id, status: "pending" },
+        order: [["createdAt", "DESC"]],
+      }).catch(() => null),
     ]);
     const configured = getConfiguredProviders();
 
@@ -82,6 +94,8 @@ router.get("/", async (req, res, next) => {
           remaining: quota.remainingToday,
           resetAt: resetAtIso,
         },
+        tierFeatures: getTierFeatures(req.user.userTier),
+        pendingUpgradeRequest: pendingUpgrade,
         models: items,
         remaining: quota.remainingToday,
         resetAt: resetAtIso,
@@ -94,10 +108,10 @@ router.get("/", async (req, res, next) => {
   }
 });
 
-// POST /api/usage/upgrade -> Nâng cấp gói dịch vụ (Free -> Plus -> Premium)
+// POST /api/usage/upgrade -> Tạo yêu cầu nâng cấp gói dịch vụ chờ Admin duyệt (hoặc hạ về Free ngay)
 router.post("/upgrade", validate(upgradeTierSchema), async (req, res, next) => {
   try {
-    const { tier } = req.body;
+    const { tier, billingCycle = "monthly", note } = req.body;
     const normalized = normalizeTier(tier);
 
     const user = await User.findByPk(req.user.id);
@@ -105,29 +119,120 @@ router.post("/upgrade", validate(upgradeTierSchema), async (req, res, next) => {
       return res.status(404).json({ success: false, message: "Không tìm thấy người dùng." });
     }
 
-    const oldTier = user.userTier || "free";
-    user.userTier = normalized;
-    await user.save();
+    const oldTier = normalizeTier(user.userTier || "free");
+    if (oldTier === normalized) {
+      return res.status(400).json({
+        success: false,
+        error: { code: "ALREADY_ON_TIER", message: `Bạn hiện đang ở gói ${normalized.toUpperCase()}.` },
+      });
+    }
+
+    // Nếu chuyển về gói Free hoặc tài khoản là Admin -> áp dụng ngay lập tức
+    if (normalized === "free" || user.role === "admin") {
+      user.userTier = normalized;
+      await user.save();
+
+      await UpgradeRequest.update(
+        { status: "cancelled", adminNote: "Người dùng chuyển gói trực tiếp." },
+        { where: { userId: user.id, status: "pending" } }
+      ).catch(() => {});
+
+      await createAuditLog({
+        adminId: user.id,
+        adminUsername: user.username,
+        action: "TIER_UPGRADE",
+        targetType: "User",
+        targetId: String(user.id),
+        details: { fromTier: oldTier, toTier: normalized },
+        ipAddress: req.ip,
+      }).catch(() => {});
+
+      const updatedQuota = await getUserTodayQuota(user);
+      return res.json({
+        success: true,
+        pending: false,
+        message: `Đã cập nhật gói dịch vụ thành ${normalized.toUpperCase()} thành công.`,
+        data: {
+          tier: normalized,
+          quota: updatedQuota,
+        },
+      });
+    }
+
+    // Người dùng thường nâng cấp lên Plus / Premium -> tạo yêu cầu chờ Admin phê duyệt
+    const cycle = billingCycle === "yearly" ? "yearly" : "monthly";
+    const amount = PLAN_PRICING[normalized]?.[cycle] || 0;
+    const cleanNote = typeof note === "string" && note.trim() ? note.trim().slice(0, 500) : null;
+
+    let pendingReq = await UpgradeRequest.findOne({
+      where: { userId: user.id, status: "pending" },
+      order: [["createdAt", "DESC"]],
+    });
+
+    if (pendingReq) {
+      pendingReq.requestedTier = normalized;
+      pendingReq.billingCycle = cycle;
+      pendingReq.amount = amount;
+      pendingReq.note = cleanNote;
+      await pendingReq.save();
+    } else {
+      pendingReq = await UpgradeRequest.create({
+        userId: user.id,
+        currentTier: oldTier,
+        requestedTier: normalized,
+        billingCycle: cycle,
+        amount,
+        note: cleanNote,
+        status: "pending",
+      });
+    }
 
     await createAuditLog({
       adminId: user.id,
       adminUsername: user.username,
-      action: "TIER_UPGRADE",
-      targetType: "User",
-      targetId: String(user.id),
-      details: { fromTier: oldTier, toTier: normalized },
+      action: "TIER_UPGRADE_REQUEST",
+      targetType: "UpgradeRequest",
+      targetId: String(pendingReq.id),
+      details: { fromTier: oldTier, requestedTier: normalized, billingCycle: cycle, amount, note: cleanNote },
       ipAddress: req.ip,
     }).catch(() => {});
 
-    const updatedQuota = await getUserTodayQuota(user);
+    const currentQuota = await getUserTodayQuota(user);
+
+    res.status(202).json({
+      success: true,
+      pending: true,
+      message: `Đã gửi yêu cầu nâng cấp lên gói ${normalized.toUpperCase()}. Yêu cầu sẽ được kích hoạt ngay sau khi Quản trị viên phê duyệt.`,
+      data: {
+        tier: oldTier,
+        request: pendingReq,
+        quota: currentQuota,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// DELETE /api/usage/upgrade-request -> Hủy yêu cầu nâng cấp đang chờ duyệt
+router.delete("/upgrade-request", async (req, res, next) => {
+  try {
+    const pendingReq = await UpgradeRequest.findOne({
+      where: { userId: req.user.id, status: "pending" },
+      order: [["createdAt", "DESC"]],
+    });
+    if (!pendingReq) {
+      return res.status(404).json({
+        success: false,
+        error: { code: "NOT_FOUND", message: "Không có yêu cầu nâng cấp nào đang chờ duyệt." },
+      });
+    }
+    pendingReq.status = "cancelled";
+    await pendingReq.save();
 
     res.json({
       success: true,
-      message: `Đã cập nhật gói dịch vụ thành ${normalized.toUpperCase()} thành công.`,
-      data: {
-        tier: normalized,
-        quota: updatedQuota,
-      },
+      message: "Đã hủy yêu cầu nâng cấp gói.",
     });
   } catch (err) {
     next(err);
